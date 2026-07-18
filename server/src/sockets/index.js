@@ -47,12 +47,26 @@ export function registerSockets(io) {
       try {
         const trip = await loadTripIfParticipant(orgId, tripId, employeeId);
         if (!trip) return cb?.({ ok: false, error: 'Not a participant of this trip' });
-        socket.join(roomFor(tripId));
+
+        const roomName = roomFor(tripId);
+
+        // Check how many OTHER sockets are in the room before we join.
+        // This tells us if the peer is already present.
+        const clientsInRoom = io.sockets.adapter.rooms.get(roomName);
+        // Exclude the current socket itself (in case it's reconnecting and still in the room).
+        const othersInRoom = clientsInRoom
+          ? [...clientsInRoom].filter((sid) => sid !== socket.id).length
+          : 0;
+        const peerOnline = othersInRoom > 0;
+
+        socket.join(roomName);
         socket.data.tripId = tripId;
         socket.data.role = trip.driver_employee_id === employeeId ? 'driver' : 'passenger';
-        // announce presence to the peer
-        socket.to(roomFor(tripId)).emit('presence:join', { employeeId, fullName, role: socket.data.role });
-        cb?.({ ok: true, role: socket.data.role, status: trip.status });
+
+        // Announce our presence to anyone already in the room.
+        socket.to(roomName).emit('presence:join', { employeeId, fullName, role: socket.data.role });
+
+        cb?.({ ok: true, role: socket.data.role, status: trip.status, peerOnline });
       } catch (e) {
         cb?.({ ok: false, error: 'join failed' });
       }

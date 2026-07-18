@@ -124,7 +124,25 @@ export default function TripDetail() {
     if (!socket) return;
     socketRef.current = socket;
 
-    socket.emit('trip:join', id, (res) => { if (res?.ok === false) setError(res.error); });
+    const joinRoom = () => {
+      // Reset peer online state when we (re)connect — we'll learn the real state from ack.
+      setPeerOnline(false);
+      socket.emit('trip:join', id, (res) => {
+        if (res?.ok === false) {
+          setError(res.error);
+        } else if (res?.ok) {
+          // peerOnline is true if the peer is already in the room when we join.
+          setPeerOnline(!!res.peerOnline);
+        }
+      });
+    };
+
+    // Join immediately if already connected.
+    if (socket.connected) joinRoom();
+
+    // Re-join the trip room on every reconnection (network blip, server restart, etc.)
+    // This is critical: without re-joining, the socket won't receive chat:new / call:signal.
+    socket.on('connect', joinRoom);
 
     const onLocation = (p) => setVehiclePos({ lat: p.lat, lng: p.lng });
     const onChat     = (m) => setMessages((prev) => [...prev, m]);
@@ -139,12 +157,14 @@ export default function TripDetail() {
     socket.on('call:signal',     onSignal);
 
     return () => {
-      socket.emit('trip:leave', id);
+      // Remove all listeners for this component instance on unmount.
+      socket.off('connect',         joinRoom);
       socket.off('location:update', onLocation);
       socket.off('chat:new',        onChat);
       socket.off('presence:join',   onJoin);
       socket.off('presence:leave',  onLeave);
       socket.off('call:signal',     onSignal);
+      socket.emit('trip:leave', id);
       stopLocationWatch();
       // Clean up the WebRTC call if the user navigates away mid-call.
       teardownCall(false);
@@ -400,9 +420,13 @@ export default function TripDetail() {
                   {peer.role} · {peerOnline ? 'online' : 'offline'}
                 </div>
               </div>
-              {/* Call button — only show when idle and peer is online */}
+              {/* Call button — show when idle; disabled only when peer is definitively offline */}
               {callState === 'idle' && (
-                <Button variant="subtle" onClick={startCall} disabled={!peerOnline} title={!peerOnline ? 'Peer is offline' : 'Start a voice call'}>
+                <Button
+                  variant="subtle"
+                  onClick={startCall}
+                  title={peerOnline ? 'Start a voice call' : 'Peer appears offline — call may not connect'}
+                >
                   <Phone className="h-4 w-4" /> Call
                 </Button>
               )}
