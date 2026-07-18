@@ -11,7 +11,7 @@ import AudioCallOverlay from '../components/AudioCallOverlay.jsx';
 import { useWebRTC } from '../hooks/useWebRTC.js';
 import { Button, Card, Badge, Spinner, Alert, money } from '../components/ui.jsx';
 
-const NEXT       = { BOOKED: 'STARTED', STARTED: 'IN_PROGRESS', IN_PROGRESS: 'COMPLETED' };
+const NEXT = { BOOKED: 'STARTED', STARTED: 'IN_PROGRESS', IN_PROGRESS: 'COMPLETED' };
 const NEXT_LABEL = { BOOKED: 'Start trip', STARTED: 'Begin journey', IN_PROGRESS: 'Complete trip' };
 
 /** Haversine distance in km */
@@ -22,8 +22,8 @@ function haversineKm(a, b) {
   const s =
     Math.sin(dLat / 2) ** 2 +
     Math.cos((a.lat * Math.PI) / 180) *
-      Math.cos((b.lat * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2;
+    Math.cos((b.lat * Math.PI) / 180) *
+    Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
 }
 
@@ -36,25 +36,26 @@ function fmtEta(secs) {
 }
 
 export default function TripDetail() {
-  const { id }    = useParams();
-  const { user }  = useAuth();
+  const { id } = useParams();
+  const { user } = useAuth();
 
-  const [trip,       setTrip]       = useState(null);
-  const [payment,    setPayment]    = useState(null);
-  const [messages,   setMessages]   = useState([]);
+  const [trip, setTrip] = useState(null);
+  const [payment, setPayment] = useState(null);
+  const [messages, setMessages] = useState([]);
   const [vehiclePos, setVehiclePos] = useState(null);
   const [myLocation, setMyLocation] = useState(null);   // ← passenger live GPS
   const [peerOnline, setPeerOnline] = useState(false);
-  const [draft,  setDraft]  = useState('');
-  const [error,  setError]  = useState('');
-  const [busy,   setBusy]   = useState(false);
+  const [draft, setDraft] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
   const [showQR, setShowQR] = useState(false);
-  const [eta,    setEta]    = useState(null);   // { distKm, minutes }
+  const [eta, setEta] = useState(null);   // { distKm, minutes }
 
-  const socketRef  = useRef(null);
-  const watchRef   = useRef(null);  // driver GPS watch id
+  const socketRef = useRef(null);
+  const watchRef = useRef(null);  // driver GPS watch id
   const myWatchRef = useRef(null);  // passenger GPS watch id
-  const chatEnd    = useRef(null);
+  const chatEnd = useRef(null);
+  const joinRoomRef = useRef(null);  // exposed so the manual reconnect button can call it
 
   const iAmDriver = trip && trip.driver_employee_id === user.employeeId;
 
@@ -90,7 +91,7 @@ export default function TripDetail() {
 
   useEffect(() => {
     loadTrip().catch((e) => setError(apiError(e)));
-    api.get(`/trips/${id}/messages`).then(({ data }) => setMessages(data.messages)).catch(() => {});
+    api.get(`/trips/${id}/messages`).then(({ data }) => setMessages(data.messages)).catch(() => { });
   }, [id, loadTrip]);
 
   useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
@@ -110,7 +111,7 @@ export default function TripDetail() {
     if (!navigator.geolocation) return;
     myWatchRef.current = navigator.geolocation.watchPosition(
       (pos) => setMyLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => {},
+      () => { },
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 12000 }
     );
     return () => {
@@ -124,27 +125,70 @@ export default function TripDetail() {
     if (!socket) return;
     socketRef.current = socket;
 
-    socket.emit('trip:join', id, (res) => { if (res?.ok === false) setError(res.error); });
-
     const onLocation = (p) => setVehiclePos({ lat: p.lat, lng: p.lng });
-    const onChat     = (m) => setMessages((prev) => [...prev, m]);
-    const onJoin     = ()  => setPeerOnline(true);
-    const onLeave    = ()  => setPeerOnline(false);
-    const onSignal   = (msg) => handleSignal(msg);
+    const onChat = (m) => setMessages((prev) => [...prev, m]);
+    const onJoin = () => setPeerOnline(true);
+    const onLeave = () => setPeerOnline(false);
+    const onSignal = (msg) => handleSignal(msg);
+    // peer:online is a lightweight ack the server sends back when the peer
+    // is already in the room and we query them with presence:ping.
+    const onPeerOnline = () => setPeerOnline(true);
+    const onPeerOffline = () => setPeerOnline(false);
 
+    // ── Register ALL listeners BEFORE joining the room ──────────────────
+    // This is critical: the server emits presence:join synchronously inside
+    // the trip:join handler (if a peer is already present). If we call
+    // joinRoom() first and register listeners after, we miss that event.
     socket.on('location:update', onLocation);
-    socket.on('chat:new',        onChat);
-    socket.on('presence:join',   onJoin);
-    socket.on('presence:leave',  onLeave);
-    socket.on('call:signal',     onSignal);
+    socket.on('chat:new', onChat);
+    socket.on('presence:join', onJoin);
+    socket.on('presence:leave', onLeave);
+    socket.on('call:signal', onSignal);
+    socket.on('peer:online', onPeerOnline);
+    socket.on('peer:offline', onPeerOffline);
+
+    const joinRoom = () => {
+      console.log('[TripDetail] joinRoom() called | socket.connected:', socket.connected, '| id:', socket.id);
+      setPeerOnline(false);
+      // If socket is disconnected, reconnect first, then join on the connect event.
+      if (!socket.connected) {
+        console.log('[TripDetail] socket disconnected — calling socket.connect()');
+        socket.connect();
+        return; // the 'connect' listener below will call joinRoom again
+      }
+      socket.emit('trip:join', id, (res) => {
+        console.log('[TripDetail] trip:join ack →', JSON.stringify(res));
+        if (res?.ok === false) {
+          setError(res.error);
+        } else if (res?.ok) {
+          setPeerOnline(!!res.peerOnline);
+          setTimeout(() => {
+            console.log('[TripDetail] sending presence:ping for tripId:', id);
+            socket.emit('presence:ping', id);
+          }, 1000);
+        }
+      });
+    };
+    // Expose joinRoom so the manual reconnect button can trigger it.
+    joinRoomRef.current = joinRoom;
+
+    // Join immediately if already connected.
+    if (socket.connected) joinRoom();
+
+    // Re-join the trip room on every reconnection (network blip, server restart, etc.)
+    socket.on('connect', joinRoom);
 
     return () => {
-      socket.emit('trip:leave', id);
+      // Remove all listeners for this component instance on unmount.
+      socket.off('connect', joinRoom);
       socket.off('location:update', onLocation);
-      socket.off('chat:new',        onChat);
-      socket.off('presence:join',   onJoin);
-      socket.off('presence:leave',  onLeave);
-      socket.off('call:signal',     onSignal);
+      socket.off('chat:new', onChat);
+      socket.off('presence:join', onJoin);
+      socket.off('presence:leave', onLeave);
+      socket.off('call:signal', onSignal);
+      socket.off('peer:online', onPeerOnline);
+      socket.off('peer:offline', onPeerOffline);
+      socket.emit('trip:leave', id);
       stopLocationWatch();
       // Clean up the WebRTC call if the user navigates away mid-call.
       teardownCall(false);
@@ -169,11 +213,11 @@ export default function TripDetail() {
           tripId: id,
           lat: latitude,
           lng: longitude,
-          speed:   speed   != null ? +(speed * 3.6).toFixed(1) : null,
-          heading: heading != null ? Math.round(heading)         : null,
+          speed: speed != null ? +(speed * 3.6).toFixed(1) : null,
+          heading: heading != null ? Math.round(heading) : null,
         });
       },
-      () => {},
+      () => { },
       { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
     );
   }
@@ -220,11 +264,11 @@ export default function TripDetail() {
 
   if (!trip) return <Spinner label={error || 'Loading trip…'} />;
 
-  const peer    = iAmDriver
+  const peer = iAmDriver
     ? { name: trip.passenger_name, phone: trip.passenger_phone, role: 'Passenger' }
-    : { name: trip.driver_name,    phone: trip.driver_phone,    role: 'Driver' };
+    : { name: trip.driver_name, phone: trip.driver_phone, role: 'Driver' };
   const showPay = !iAmDriver && payment && payment.status === 'PENDING';
-  const isLive  = ['STARTED', 'IN_PROGRESS'].includes(trip.status);
+  const isLive = ['STARTED', 'IN_PROGRESS'].includes(trip.status);
 
   /* Status badge label with ETA */
   const trackingLabel = isLive
@@ -297,14 +341,14 @@ export default function TripDetail() {
           <Card className="p-5">
             <h2 className="mb-4 flex items-center gap-2 border-b border-white/60 pb-3 font-bold text-ink-800"><Route className="h-4 w-4 text-brand" /> Trip details</h2>
             <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-              <Info label="Driver"    value={trip.driver_name} />
+              <Info label="Driver" value={trip.driver_name} />
               <Info label="Passenger" value={trip.passenger_name} />
-              <Info label="Vehicle"   value={`${trip.vehicle_model} (${trip.registration_number})`} />
-              <Info label="Schedule"  value={new Date(trip.departure_datetime).toLocaleString()} />
-              <Info label="Pickup"    value={trip.pickup_address} />
+              <Info label="Vehicle" value={`${trip.vehicle_model} (${trip.registration_number})`} />
+              <Info label="Schedule" value={new Date(trip.departure_datetime).toLocaleString()} />
+              <Info label="Pickup" value={trip.pickup_address} />
               <Info label="Destination" value={trip.destination_address} />
-              <Info label="Distance"  value={`${trip.distance_km} km`} />
-              <Info label="Fare"      value={money(trip.fare_amount)} />
+              <Info label="Distance" value={`${trip.distance_km} km`} />
+              <Info label="Fare" value={money(trip.fare_amount)} />
             </div>
 
             {iAmDriver && NEXT[trip.status] && (
@@ -396,13 +440,27 @@ export default function TripDetail() {
               <div>
                 <div className="text-sm font-bold text-ink-800">{peer.name}</div>
                 <div className="flex items-center gap-1.5 text-xs text-ink-400">
-                  {peerOnline && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand" />}
+                  {peerOnline
+                    ? <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
+                    : <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />}
                   {peer.role} · {peerOnline ? 'online' : 'offline'}
+                  {/* Manual reconnect — tap if peer shows offline but both are on the page */}
+                  <button
+                    onClick={() => joinRoomRef.current?.()}
+                    className="ml-1 rounded px-1.5 py-0.5 text-[10px] font-semibold text-brand hover:bg-brand/10 transition"
+                    title="Re-join the room to refresh connection status"
+                  >
+                    ↺ Reconnect
+                  </button>
                 </div>
               </div>
-              {/* Call button — only show when idle and peer is online */}
+              {/* Call button — show when idle; disabled only when peer is definitively offline */}
               {callState === 'idle' && (
-                <Button variant="subtle" onClick={startCall} disabled={!peerOnline} title={!peerOnline ? 'Peer is offline' : 'Start a voice call'}>
+                <Button
+                  variant="subtle"
+                  onClick={startCall}
+                  title={peerOnline ? 'Start a voice call' : 'Peer appears offline — call may not connect'}
+                >
                   <Phone className="h-4 w-4" /> Call
                 </Button>
               )}
@@ -439,11 +497,10 @@ export default function TripDetail() {
                 }
                 return (
                   <div key={m.message_id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm shadow-sm ${
-                      mine
+                    <div className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm shadow-sm ${mine
                         ? 'bg-gradient-to-br from-brand to-brand-dark text-white ring-1 ring-white/20'
                         : 'border border-white/60 bg-white/70 text-ink-700 backdrop-blur-sm'
-                    }`}>
+                      }`}>
                       {m.message_text}
                       <div className={`mt-0.5 text-[10px] ${mine ? 'text-white/70' : 'text-ink-400'}`}>
                         {new Date(m.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

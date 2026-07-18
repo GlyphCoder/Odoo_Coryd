@@ -64,10 +64,10 @@ export function useWebRTC({ tripId, myEmployeeId, emitSignal }) {
   // idle → incoming (peer initiated, waiting for us to accept/reject)
   // calling/incoming → connected (both sides have audio)
   // connected → idle (call ended by either side)
-  const [callState, setCallState]   = useState('idle');       // idle|calling|incoming|connected
+  const [callState, setCallState] = useState('idle');       // idle|calling|incoming|connected
   const [connStatus, setConnStatus] = useState('idle');       // idle|connecting|connected|reconnecting|failed
-  const [isMuted, setIsMuted]       = useState(false);
-  const [callError, setCallError]   = useState('');
+  const [isMuted, setIsMuted] = useState(false);
+  const [callError, setCallError] = useState('');
 
   // Refs — we use refs (not state) for PC + stream so closures always see the latest instance.
   const pcRef          = useRef(null);   // RTCPeerConnection
@@ -75,6 +75,7 @@ export function useWebRTC({ tripId, myEmployeeId, emitSignal }) {
   const remoteAudioRef = useRef(null);   // <audio> element ref (passed in from component)
   const pendingOffer   = useRef(null);   // SDP offer buffered while we wait for user to accept
   const callerIdRef    = useRef(null);   // employeeId of the person who sent the 'invite'
+  const pendingIceCandidates = useRef([]); // ICE candidates queued before remoteDescription is set
 
   // ── Internal helpers ──────────────────────────────────────────────────────
 
@@ -110,7 +111,7 @@ export function useWebRTC({ tripId, myEmployeeId, emitSignal }) {
   function createPeerConnection() {
     // Close any existing connection first (shouldn't normally happen, but guard against it).
     if (pcRef.current) {
-      try { pcRef.current.close(); } catch {}
+      try { pcRef.current.close(); } catch { }
     }
 
     const pc = new RTCPeerConnection(RTC_CONFIG);
@@ -129,8 +130,21 @@ export function useWebRTC({ tripId, myEmployeeId, emitSignal }) {
     // ── Incoming remote audio track ──────────────────────────────────────
     // When the peer's audio arrives, attach it to the hidden <audio> element.
     pc.ontrack = (event) => {
-      if (remoteAudioRef.current && event.streams[0]) {
-        remoteAudioRef.current.srcObject = event.streams[0];
+      console.log('[WebRTC] ontrack event received:', event);
+      if (remoteAudioRef.current) {
+        let stream;
+        if (event.streams && event.streams[0]) {
+          stream = event.streams[0];
+        } else {
+          console.log('[WebRTC] event.streams[0] missing, creating new MediaStream from track');
+          stream = new MediaStream();
+          stream.addTrack(event.track);
+        }
+        remoteAudioRef.current.srcObject = stream;
+        // Explicitly trigger play() to bypass aggressive browser autoplay blocks
+        remoteAudioRef.current.play().catch((err) => {
+          console.error('[WebRTC] Error playing remote audio stream:', err);
+        });
       }
     };
 
@@ -138,11 +152,11 @@ export function useWebRTC({ tripId, myEmployeeId, emitSignal }) {
     // Tracks the overall ICE + DTLS connection lifecycle.
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
-      if (state === 'connecting')     setConnStatus('connecting');
-      if (state === 'connected')      setConnStatus('connected');
-      if (state === 'disconnected')   setConnStatus('reconnecting');
-      if (state === 'failed')         { setConnStatus('failed'); teardownCall(true); }
-      if (state === 'closed')         setConnStatus('idle');
+      if (state === 'connecting') setConnStatus('connecting');
+      if (state === 'connected') setConnStatus('connected');
+      if (state === 'disconnected') setConnStatus('reconnecting');
+      if (state === 'failed') { setConnStatus('failed'); teardownCall(true); }
+      if (state === 'closed') setConnStatus('idle');
     };
 
     // ── ICE connection state (more granular than connectionState) ────────
@@ -165,6 +179,23 @@ export function useWebRTC({ tripId, myEmployeeId, emitSignal }) {
   }
 
   /**
+   * Flush any buffered ICE candidates that arrived before the remote description was set.
+   */
+  const flushIceCandidates = useCallback(async () => {
+    if (!pcRef.current || !pcRef.current.remoteDescription) return;
+    console.log(`[WebRTC] Applying ${pendingIceCandidates.current.length} buffered ICE candidates`);
+    const candidates = [...pendingIceCandidates.current];
+    pendingIceCandidates.current = [];
+    for (const candidate of candidates) {
+      try {
+        await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (err) {
+        console.error('[WebRTC] Failed to add buffered ICE candidate:', err);
+      }
+    }
+  }, []);
+
+  /**
    * Tear down the peer connection and release all media resources.
    * This is always safe to call — it guards against null refs.
    *
@@ -181,19 +212,20 @@ export function useWebRTC({ tripId, myEmployeeId, emitSignal }) {
     localStreamRef.current = null;
 
     // Close the peer connection to release ICE agents and socket ports.
-    try { pcRef.current?.close(); } catch {}
+    try { pcRef.current?.close(); } catch { }
     pcRef.current = null;
 
     // Clear any buffered offer from an incoming call we didn't accept yet.
     pendingOffer.current = null;
-    callerIdRef.current  = null;
+    callerIdRef.current = null;
+    pendingIceCandidates.current = [];
 
     // Reset all state.
     setCallState('idle');
     setConnStatus('idle');
     setIsMuted(false);
     setCallError('');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [emitSignal]);
 
   // ── Public API ────────────────────────────────────────────────────────────
@@ -241,7 +273,7 @@ export function useWebRTC({ tripId, myEmployeeId, emitSignal }) {
       setCallError(err.message || 'Could not start call');
       teardownCall(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callState, emitSignal, teardownCall]);
 
   /**
@@ -272,6 +304,9 @@ export function useWebRTC({ tripId, myEmployeeId, emitSignal }) {
       // Step 4: Apply the caller's SDP offer as the remote description.
       await pc.setRemoteDescription(new RTCSessionDescription(pendingOffer.current));
 
+      // Flush any ICE candidates that were sent before we accepted the call.
+      await flushIceCandidates();
+
       // Step 5: Create our answer SDP.
       const answer = await pc.createAnswer();
 
@@ -287,7 +322,7 @@ export function useWebRTC({ tripId, myEmployeeId, emitSignal }) {
       setCallError(err.message || 'Could not accept call');
       teardownCall(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [emitSignal, teardownCall]);
 
   /** Reject an incoming call (callee declines). */
@@ -364,6 +399,7 @@ export function useWebRTC({ tripId, myEmployeeId, emitSignal }) {
         // After this, ICE candidates will be exchanged and audio will flow.
         if (pcRef.current) {
           await pcRef.current.setRemoteDescription(new RTCSessionDescription(data));
+          await flushIceCandidates();
         }
         break;
       }
@@ -371,12 +407,16 @@ export function useWebRTC({ tripId, myEmployeeId, emitSignal }) {
       // ── ICE candidate from the peer ──────────────────────────────────
       case 'ice': {
         // Add the peer's ICE candidate to our connection.
-        // We try multiple network paths; the browser picks the best one.
-        if (pcRef.current && data) {
-          try {
-            await pcRef.current.addIceCandidate(new RTCIceCandidate(data));
-          } catch {
-            // Occasionally fails if candidate arrives before remote description is set — safe to ignore.
+        if (data) {
+          if (pcRef.current && pcRef.current.remoteDescription) {
+            try {
+              await pcRef.current.addIceCandidate(new RTCIceCandidate(data));
+            } catch (err) {
+              console.error('[WebRTC] Error adding ICE candidate:', err);
+            }
+          } else {
+            console.log('[WebRTC] Queuing ICE candidate until remote description is set');
+            pendingIceCandidates.current.push(data);
           }
         }
         break;
@@ -397,7 +437,7 @@ export function useWebRTC({ tripId, myEmployeeId, emitSignal }) {
       default:
         break;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callState, myEmployeeId, emitSignal, teardownCall]);
 
   return {
