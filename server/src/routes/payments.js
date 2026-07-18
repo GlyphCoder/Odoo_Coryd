@@ -73,7 +73,7 @@ router.post('/razorpay/qr', asyncHandler(async (req, res) => {
 
   const qr = await rzpClient.qrCode.create({
     type:           'upi_qr',
-    name:           'Carpool Payment',
+    name:           'CoRYD Payment',
     usage:          'single_use',
     fixed_amount:   true,
     payment_amount: amountPaise,

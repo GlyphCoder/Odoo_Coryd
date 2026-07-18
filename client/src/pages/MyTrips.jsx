@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { Car, ClipboardList, RefreshCw, Armchair, MapPin, Clock, ArrowRight } from 'lucide-react';
 import api from '../api.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { Card, Badge, Button, Empty, Spinner, money } from '../components/ui.jsx';
 
 const tabs = [
-  { key: 'offered',   label: '🚗 Offered Rides' },
-  { key: 'all',       label: '📋 All Trips' },
-  { key: 'driver',    label: 'As Driver' },
-  { key: 'passenger', label: 'As Passenger' },
+  { key: 'offered',   label: 'Offered Rides',  Icon: Car },
+  { key: 'all',       label: 'All Trips',       Icon: ClipboardList },
+  { key: 'driver',    label: 'As Driver',       Icon: null },
+  { key: 'passenger', label: 'As Passenger',    Icon: null },
 ];
 
 export default function MyTrips() {
@@ -77,12 +78,13 @@ export default function MyTrips() {
           <button
             key={t.key}
             onClick={() => setParams(t.key === 'offered' ? {} : { role: t.key })}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${
               role === t.key
                 ? 'bg-brand text-white shadow-sm'
                 : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
             }`}
           >
+            {t.Icon && <t.Icon className="h-3.5 w-3.5" strokeWidth={2} />}
             {t.label}
           </button>
         ))}
@@ -124,22 +126,24 @@ export default function MyTrips() {
                           {new Date(r.departure_datetime).toLocaleString()}
                         </span>
                         {r.is_recurring && (
-                          <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
-                            🔁 Recurring
+                          <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
+                            <RefreshCw className="h-3 w-3" /> Recurring
                           </span>
                         )}
                       </div>
-                      <p className="mt-2 text-sm text-slate-600">
-                        <span className="font-bold text-brand-dark">●</span> {r.pickup_address}
-                      </p>
-                      <p className="text-sm text-slate-600">
-                        <span className="font-bold text-rose-500">●</span> {r.destination_address}
-                      </p>
+                      {/* Route: pickup → destination in one line */}
+                      <div className="mt-2 flex min-w-0 items-center gap-1.5 overflow-hidden text-sm text-slate-600">
+                        <MapPin className="h-3.5 w-3.5 shrink-0 text-brand" />
+                        <span className="flex-1 min-w-0 truncate">{r.pickup_address}</span>
+                        <ArrowRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                        <MapPin className="h-3.5 w-3.5 shrink-0 text-rose-500" />
+                        <span className="flex-1 min-w-0 truncate">{r.destination_address}</span>
+                      </div>
                       <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-400">
-                        <span>🚗 {r.vehicle_model} ({r.registration_number})</span>
-                        <span>💺 {r.available_seats}/{r.total_seats} seats left</span>
-                        {r.distance_km && <span>📍 {r.distance_km} km</span>}
-                        {r.duration_minutes && <span>⏱ ~{r.duration_minutes} min</span>}
+                        <span className="inline-flex items-center gap-1"><Car className="h-3 w-3" /> {r.vehicle_model} ({r.registration_number})</span>
+                        <span className="inline-flex items-center gap-1"><Armchair className="h-3 w-3" /> {r.available_seats}/{r.total_seats} seats left</span>
+                        {r.distance_km && <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" /> {r.distance_km} km</span>}
+                        {r.duration_minutes && <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" /> ~{r.duration_minutes} min</span>}
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-2">
@@ -161,7 +165,7 @@ export default function MyTrips() {
                   {/* Show bookings count if ride is FULL */}
                   {r.status === 'FULL' && (
                     <p className="mt-2 rounded-lg bg-amber-50 px-3 py-1.5 text-xs text-amber-700">
-                      ✓ Ride is full — all seats booked
+                      Ride is full — all seats booked
                     </p>
                   )}
                 </Card>
@@ -197,16 +201,18 @@ export default function MyTrips() {
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <Badge status={t.status} />
-                            <span className="text-xs font-medium text-slate-400">
-                              {iAmDriver ? '🚗 You drive' : `Driver: ${t.driver_name}`}
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-400">
+                              {iAmDriver ? <><Car className="h-3 w-3" /> You drive</> : `Driver: ${t.driver_name}`}
                             </span>
                           </div>
-                          <p className="mt-1 text-sm text-slate-600">
-                            <span className="text-brand-dark">●</span> {t.pickup_address}
-                          </p>
-                          <p className="text-sm text-slate-600">
-                            <span className="text-rose-500">●</span> {t.destination_address}
-                          </p>
+                          {/* Route: pickup → destination in one line */}
+                          <div className="mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden text-sm text-slate-600">
+                            <MapPin className="h-3.5 w-3.5 shrink-0 text-brand" />
+                            <span className="flex-1 min-w-0 truncate">{t.pickup_address}</span>
+                            <ArrowRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                            <MapPin className="h-3.5 w-3.5 shrink-0 text-rose-500" />
+                            <span className="flex-1 min-w-0 truncate">{t.destination_address}</span>
+                          </div>
                           <p className="mt-1 text-xs text-slate-400">
                             {new Date(t.departure_datetime).toLocaleString()} ·{' '}
                             {iAmDriver ? `Passenger: ${t.passenger_name}` : t.vehicle_model}

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Map, Search, ClipboardList, MapPin, ArrowRight } from 'lucide-react';
 import api, { apiError } from '../api.js';
 import AddressInput from '../components/AddressInput.jsx';
 import MapView from '../components/MapView.jsx';
@@ -8,15 +9,15 @@ import { Button, Card, Input, Badge, Empty, money } from '../components/ui.jsx';
 export default function FindRide() {
   const navigate = useNavigate();
 
-  const [pickup,    setPickup]    = useState(null);
-  const [dest,      setDest]      = useState(null);
-  const [mode,      setMode]      = useState('now');
-  const [date,      setDate]      = useState('');
-  const [seats,     setSeats]     = useState(1);
-  const [route,     setRoute]     = useState(null);
-  const [rides,     setRides]     = useState(null);
-  const [busy,      setBusy]      = useState(false);
-  const [error,     setError]     = useState('');
+  const [pickup, setPickup] = useState(null);
+  const [dest, setDest] = useState(null);
+  const [mode, setMode] = useState('now');
+  const [date, setDate] = useState('');
+  const [seats, setSeats] = useState(1);
+  const [route, setRoute] = useState(null);
+  const [rides, setRides] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
   const [bookingId, setBookingId] = useState(null);
   const [myLocation, setMyLocation] = useState(null);
 
@@ -25,7 +26,7 @@ export default function FindRide() {
     if (!navigator.geolocation) return;
     const id = navigator.geolocation.watchPosition(
       (pos) => setMyLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => {},
+      () => { },
       { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
     );
     return () => navigator.geolocation.clearWatch(id);
@@ -45,14 +46,14 @@ export default function FindRide() {
 
   /* ── Confirm route (fetch polyline from OSRM) ── */
   const [pickupText, setPickupText] = useState('');
-  const [destText,   setDestText]   = useState('');
+  const [destText, setDestText] = useState('');
 
   const confirmRoute = async () => {
     const p = await resolvePoint(pickup, pickupText);
     const d = await resolvePoint(dest, destText);
     if (!p || !d) return setError('Select both pickup and destination');
     if (!pickup) setPickup(p);
-    if (!dest)   setDest(d);
+    if (!dest) setDest(d);
     setError(''); setBusy(true);
     try {
       const { data } = await api.post('/geo/route', { pickup: p, destination: d });
@@ -68,7 +69,7 @@ export default function FindRide() {
     if (!p || !d) return setError('Enter a valid pickup and destination first');
     if (mode === 'schedule' && !date) return setError('Choose a travel date for scheduled rides');
     if (!pickup) setPickup(p);
-    if (!dest)   setDest(d);
+    if (!dest) setDest(d);
     setError(''); setBusy(true); setRides(null);
     try {
       const { data } = await api.get('/rides', {
@@ -76,7 +77,7 @@ export default function FindRide() {
           date: mode === 'schedule' ? date : undefined,
           seats,
           pickupLat: p.lat, pickupLng: p.lng,
-          destLat:   d.lat, destLng:   d.lng,
+          destLat: d.lat, destLng: d.lng,
           radiusKm: 15,
         },
       });
@@ -165,14 +166,14 @@ export default function FindRide() {
             onClick={confirmRoute}
             disabled={busy || !canSearch}
           >
-            🗺️ Confirm route
+            <Map className="h-4 w-4" /> Confirm route
           </Button>
           <Button
             onClick={search}
             disabled={busy || !canSearch}
             id="search-rides-btn"
           >
-            {busy ? 'Searching…' : mode === 'schedule' ? '🔍 Search scheduled rides' : '🔍 Search rides now'}
+            {busy ? 'Searching…' : <><Search className="h-4 w-4" /> Search</>}
           </Button>
           <Button
             variant="ghost"
@@ -186,7 +187,7 @@ export default function FindRide() {
             }}
             disabled={busy}
           >
-            📋 Browse all rides
+            <ClipboardList className="h-4 w-4" /> Browse all rides
           </Button>
         </div>
       </Card>
@@ -239,12 +240,14 @@ export default function FindRide() {
                     <span className="font-semibold text-slate-800">{r.driver_name}</span>
                     <Badge status={r.status} />
                   </div>
-                  <p className="mt-1 text-sm text-slate-600">
-                    <span className="text-brand-dark">●</span> {r.pickup_address}
-                  </p>
-                  <p className="text-sm text-slate-600">
-                    <span className="text-rose-500">●</span> {r.destination_address}
-                  </p>
+                  {/* Route: pickup → destination in one line */}
+                  <div className="mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden text-sm text-slate-600">
+                    <MapPin className="h-3.5 w-3.5 shrink-0 text-brand" />
+                    <span className="flex-1 min-w-0 truncate">{r.pickup_address}</span>
+                    <ArrowRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                    <MapPin className="h-3.5 w-3.5 shrink-0 text-rose-500" />
+                    <span className="flex-1 min-w-0 truncate">{r.destination_address}</span>
+                  </div>
                   <p className="mt-1 text-xs text-slate-400">
                     {new Date(r.departure_datetime).toLocaleString()} ·{' '}
                     {r.vehicle_model} ({r.registration_number}) ·{' '}

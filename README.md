@@ -1,4 +1,4 @@
-# 🚗 Enterprise Carpooling Platform
+# 🚗 Enterprise CoRYD Platform
 
 Multi-tenant ride-sharing for organizations. Employees find rides, offer rides,
 track trips live on a map, chat / voice-call the other participant, and settle

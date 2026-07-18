@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { MapPin } from 'lucide-react';
 import api, { apiError } from '../api.js';
 import AddressInput from '../components/AddressInput.jsx';
 import { Button, Card, Input, Empty } from '../components/ui.jsx';
@@ -42,7 +43,7 @@ export default function SavedPlaces() {
           {places.map((p) => (
             <Card key={p.place_id} className="flex items-center justify-between p-4">
               <div className="min-w-0">
-                <div className="font-semibold text-slate-800">📍 {p.label}</div>
+                <div className="flex items-center gap-1.5 font-semibold text-slate-800"><MapPin className="h-4 w-4 text-brand" /> {p.label}</div>
                 <div className="truncate text-sm text-slate-500">{p.address_text}</div>
               </div>
               <Button variant="ghost" onClick={() => remove(p.place_id)}>Remove</Button>

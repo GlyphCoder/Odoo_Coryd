@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { MapPin, X } from 'lucide-react';
 import api from '../api.js';
 
 /**
@@ -129,13 +130,13 @@ export default function AddressInput({ label, value, onSelect, placeholder, show
             </svg>
           </span>
         ) : q ? (
-          <button
+            <button
             onClick={() => { setQ(''); setResults([]); setOpen(false); onSelect?.(null); inputRef.current?.focus(); }}
             className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
             tabIndex={-1}
             aria-label="Clear"
           >
-            ✕
+            <X className="h-3.5 w-3.5" />
           </button>
         ) : null}
       </div>
@@ -148,9 +149,11 @@ export default function AddressInput({ label, value, onSelect, placeholder, show
           {showMyLocation && (
             <li
               onClick={useMyLocation}
-              className="flex cursor-pointer items-center gap-2 border-b border-slate-100 px-3 py-2.5 text-sm font-medium text-brand-dark hover:bg-teal-50"
+              className="flex cursor-pointer items-center gap-2 border-b border-slate-100 px-3 py-2.5 text-sm font-medium text-brand-dark hover:bg-green-50"
             >
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-teal-100 text-base">📍</span>
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-green-100 text-brand">
+                <MapPin className="h-4 w-4" />
+              </span>
               {locLoading ? 'Detecting location…' : 'Use my current location'}
             </li>
           )}
@@ -171,7 +174,7 @@ export default function AddressInput({ label, value, onSelect, placeholder, show
                 highlighted === i ? 'bg-teal-50 text-teal-800' : 'hover:bg-slate-50'
               }`}
             >
-              <span className="mt-0.5 shrink-0 text-slate-400">📌</span>
+              <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
               <span className="min-w-0 leading-snug">{r.label}</span>
             </li>
           ))}

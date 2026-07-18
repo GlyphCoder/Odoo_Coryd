@@ -1,7 +1,7 @@
 {
   "name": "carpool-server",
   "version": "1.0.0",
-  "description": "Enterprise Carpooling Platform — API + realtime server",
+  "description": "Enterprise CoRYD Platform — API + realtime server",
   "type": "module",
   "main": "src/index.js",
   "scripts": {

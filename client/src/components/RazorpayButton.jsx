@@ -35,10 +35,10 @@ export default function RazorpayButton({ tripId, amount, onSuccess, onError, dis
     if (!rzpReady) return onError?.('Razorpay checkout not ready. Please refresh.');
     setLoading(true);
     try {
-      /* 1️⃣  Create Razorpay Order on server */
+      /* Step 1: Create Razorpay Order on server */
       const { data: orderData } = await api.post('/payments/razorpay/order', { tripId });
 
-      /* 2️⃣  Open Razorpay popup */
+      /* Step 2: Open Razorpay popup */
       await new Promise((resolve, reject) => {
         const options = {
           key:         orderData.keyId,
@@ -53,7 +53,7 @@ export default function RazorpayButton({ tripId, amount, onSuccess, onError, dis
           },
           handler: async (response) => {
             try {
-              /* 3️⃣  Verify signature on server */
+              /* Step 3: Verify signature on server */
               const { data: verifyData } = await api.post('/payments/razorpay/verify', {
                 razorpay_order_id:   response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,

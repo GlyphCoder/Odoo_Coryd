@@ -59,7 +59,7 @@ router.get('/', asyncHandler(async (req, res) => {
     rows = rows
       .map((r) => {
         const pickupDist = haversineKm(p, { lat: +r.pickup_lat, lng: +r.pickup_lng });
-        const destDist   = d ? haversineKm(d, { lat: +r.destination_lat, lng: +r.destination_lng }) : 0;
+        const destDist = d ? haversineKm(d, { lat: +r.destination_lat, lng: +r.destination_lng }) : 0;
         return { ...r, pickup_distance_km: pickupDist, dest_distance_km: destDist };
       })
       .filter((r) => r.pickup_distance_km <= radiusKm && (!d || r.dest_distance_km <= radiusKm))
@@ -97,8 +97,9 @@ router.get('/:id', asyncHandler(async (req, res) => {
 /** POST /api/rides — publish a ride (driver). */
 router.post('/', asyncHandler(async (req, res) => {
   const b = req.body || {};
+  // farePerSeat is no longer accepted from the driver — calculated server-side.
   const required = ['vehicleId', 'pickupAddress', 'pickupLat', 'pickupLng',
-    'destinationAddress', 'destinationLat', 'destinationLng', 'departureDatetime', 'totalSeats', 'farePerSeat'];
+    'destinationAddress', 'destinationLat', 'destinationLng', 'departureDatetime', 'totalSeats'];
   for (const k of required) if (b[k] == null || b[k] === '') throw badRequest(`${k} is required`);
 
   // Vehicle must belong to this driver in this org.
@@ -111,9 +112,10 @@ router.post('/', asyncHandler(async (req, res) => {
     throw badRequest(`Seats offered cannot exceed vehicle capacity (${vehicle.seating_capacity})`);
   }
 
-  // Compute route (distance/duration/polyline) — free OSRM, fallback to haversine.
-  let distanceKm = b.distanceKm ?? null;
-  let durationMinutes = b.durationMinutes ?? null;
+  // Compute route (distance/duration/polyline) from driver's full pickup→destination.
+  // Free OSRM, fallback to haversine.
+  let distanceKm = null;
+  let durationMinutes = null;
   let polyline = null;
   try {
     const route = await getRoute(
@@ -124,11 +126,22 @@ router.post('/', asyncHandler(async (req, res) => {
     durationMinutes = route.durationMinutes;
     polyline = JSON.stringify(route.geometry);
   } catch {
-    distanceKm = distanceKm ?? haversineKm(
+    distanceKm = haversineKm(
       { lat: +b.pickupLat, lng: +b.pickupLng },
       { lat: +b.destinationLat, lng: +b.destinationLng }
     );
   }
+
+  // Fetch admin-configured cost_per_km for this organisation, then auto-calculate fare.
+  const settings = (await query(
+    'SELECT cost_per_km FROM organization_settings WHERE organization_id = $1',
+    [req.auth.orgId]
+  )).rows[0];
+  const costPerKm = Number(settings?.cost_per_km ?? 0);
+  // fare_per_seat = cost_per_km × driver's full route distance (min ₹1 when rate is set).
+  const farePerSeat = costPerKm > 0 && distanceKm
+    ? Math.max(1, +(costPerKm * distanceKm).toFixed(2))
+    : 0;
 
   const row = (await query(
     `INSERT INTO rides (
@@ -144,7 +157,7 @@ router.post('/', asyncHandler(async (req, res) => {
      b.pickupAddress, b.pickupLat, b.pickupLng,
      b.destinationAddress, b.destinationLat, b.destinationLng,
      polyline, distanceKm, durationMinutes,
-     b.departureDatetime, parseInt(b.totalSeats, 10), b.farePerSeat,
+     b.departureDatetime, parseInt(b.totalSeats, 10), farePerSeat,
      !!b.isRecurring, b.recurrencePattern ? JSON.stringify(b.recurrencePattern) : null]
   )).rows[0];
 

@@ -1,5 +1,5 @@
 -- =====================================================================
--- Enterprise Carpooling Platform — Multi-tenant schema (Supabase / Postgres)
+-- Enterprise CoRYD Platform — Multi-tenant schema (Supabase / Postgres)
 -- Run this in the Supabase SQL Editor (or `psql $DATABASE_URL -f db/schema.sql`)
 -- Tenant isolation: every tenant table carries organization_id (NOT NULL FK),
 -- enforced at the app layer and, optionally, by RLS (see db/rls.sql).

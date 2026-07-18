@@ -4,8 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
     <title>CoRYD — Enterprise Ride Sharing</title>
+    <meta name="description" content="Enterprise ride sharing for your organization. Find a ride, offer a ride, track trips live, and split the cost." />
 
-    <!-- Leaflet (free OpenStreetMap maps) -->
+    <!-- Inter font (Google Fonts) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+    <!-- Leaflet -->
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -13,22 +19,62 @@
       crossorigin=""
     />
 
-    <!-- Tailwind (CDN — fine for a hackathon; swap to a build step for prod) -->
+    <!-- Tailwind CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
         theme: {
           extend: {
+            fontFamily: {
+              sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+            },
             colors: {
-              brand: { DEFAULT: '#0d9488', dark: '#0f766e', light: '#5eead4' },
+              brand: { DEFAULT: '#16a34a', dark: '#15803d', light: '#86efac', subtle: '#f0fdf4' },
+            },
+            boxShadow: {
+              card:         '0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06)',
+              'card-hover': '0 4px 12px -2px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.05)',
+              elevated:     '0 10px 25px -5px rgb(0 0 0 / 0.08), 0 4px 10px -5px rgb(0 0 0 / 0.04)',
+              input:        '0 1px 2px 0 rgb(0 0 0 / 0.04)',
+            },
+            borderRadius: {
+              '2xl': '1rem',
+              '3xl': '1.25rem',
             },
           },
         },
       };
     </script>
+
     <style>
-      body { background: #f8fafc; }
-      .leaflet-container { z-index: 0; }
+      /* Base */
+      *, *::before, *::after { box-sizing: border-box; }
+
+      html { scroll-behavior: smooth; }
+
+      body {
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        background-color: #f1f5f9;
+        background-image: radial-gradient(circle, #cbd5e1 1px, transparent 1px);
+        background-size: 24px 24px;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      /* Leaflet z-index fix */
+      .leaflet-container { z-index: 0; font-family: inherit; }
+
+      /* Custom scrollbar */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+      ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+      /* Focus ring reset — handled per-component */
+      :focus-visible { outline: none; }
+
+      /* Smooth transitions everywhere */
+      a, button { transition: all 0.15s ease-out; }
     </style>
   </head>
   <body>

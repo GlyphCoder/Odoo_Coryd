@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Check } from 'lucide-react';
 import api, { apiError } from '../api.js';
 import { Button, Card, Input, Select, Badge, Empty, Spinner, money } from '../components/ui.jsx';
 
@@ -210,7 +211,7 @@ function Settings() {
         <Input label="Max ride radius (km)" type="number" step="1" value={s.max_ride_radius_km ?? ''} onChange={set('max_ride_radius_km')} />
         <div className="sm:col-span-2 flex items-center gap-3">
           <Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save settings'}</Button>
-          {saved && <span className="text-sm text-emerald-600">✓ Saved</span>}
+          {saved && <span className="inline-flex items-center gap-1 text-sm text-emerald-600"><Check className="h-4 w-4" /> Saved</span>}
         </div>
       </form>
     </Card>

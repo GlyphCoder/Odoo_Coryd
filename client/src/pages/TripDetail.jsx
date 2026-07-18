@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { Clock, CheckCircle, Banknote, Smartphone, Wallet2, Phone, Mic } from 'lucide-react';
 import api, { apiError } from '../api.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { getSocket } from '../socket.js';
@@ -268,8 +269,8 @@ export default function TripDetail() {
   /* Status badge label with ETA */
   const trackingLabel = isLive
     ? trip.status === 'IN_PROGRESS'
-      ? `🟢 Trip in progress${eta ? ` · ~${eta.minutes} min to dest (${eta.distKm} km)` : ''}`
-      : `🟡 Heading to pickup`
+      ? `Trip in progress${eta ? ` · ~${eta.minutes} min to dest (${eta.distKm} km)` : ''}`
+      : `Heading to pickup`
     : `${trip.distance_km} km route`;
 
   return (
@@ -312,7 +313,7 @@ export default function TripDetail() {
           {/* ETA banner when live */}
           {isLive && eta && (
             <div className="flex items-center gap-3 rounded-xl bg-teal-50 px-4 py-3 text-sm">
-              <span className="text-2xl">🕐</span>
+              <Clock className="h-6 w-6 shrink-0 text-teal-500" />
               <div>
                 <div className="font-semibold text-teal-800">
                   ~{eta.minutes} min estimated arrival
@@ -360,7 +361,7 @@ export default function TripDetail() {
               <h2 className="mb-3 font-semibold text-slate-700">Payment</h2>
               {payment.status === 'COMPLETED' ? (
                 <div className="flex items-center gap-3 rounded-xl bg-emerald-50 px-4 py-3">
-                  <span className="text-2xl">✅</span>
+                  <CheckCircle className="h-6 w-6 shrink-0 text-emerald-500" strokeWidth={1.75} />
                   <div>
                     <p className="font-semibold text-emerald-700">
                       Paid {money(payment.amount)} via {payment.payment_method}
@@ -411,7 +412,7 @@ export default function TripDetail() {
                   <div className="flex flex-wrap gap-2">
                     {['CASH', 'UPI', 'WALLET'].map((m) => (
                       <Button key={m} variant="outline" onClick={() => pay(m)} disabled={busy}>
-                        {m === 'CASH' ? '💵' : m === 'UPI' ? '📱' : '👛'} {m}
+                        {m === 'CASH' ? <Banknote className="h-4 w-4" /> : m === 'UPI' ? <Smartphone className="h-4 w-4" /> : <Wallet2 className="h-4 w-4" />}{' '}{m}
                       </Button>
                     ))}
                   </div>
@@ -432,14 +433,14 @@ export default function TripDetail() {
                   {peer.role} · {peerOnline ? 'online' : 'offline'}
                 </div>
               </div>
-              {callState === 'idle'      && <Button variant="subtle" onClick={startCall}>📞 Call</Button>}
+              {callState === 'idle'      && <Button variant="subtle" onClick={startCall}><Phone className="h-4 w-4" /> Call</Button>}
               {callState === 'calling'   && <Button variant="danger" onClick={endCall}>Cancel</Button>}
               {callState === 'connected' && <Button variant="danger" onClick={endCall}>End call</Button>}
             </div>
 
             {callState === 'incoming' && (
               <div className="flex items-center justify-between bg-brand/10 px-4 py-2 text-sm">
-                <span>📞 Incoming call…</span>
+                <span className="inline-flex items-center gap-1"><Phone className="h-4 w-4" /> Incoming call…</span>
                 <span className="flex gap-2">
                   <Button onClick={acceptCall}>Accept</Button>
                   <Button variant="danger" onClick={rejectCall}>Decline</Button>
@@ -447,12 +448,12 @@ export default function TripDetail() {
               </div>
             )}
             {callState === 'connected' && (
-              <div className="bg-emerald-50 px-4 py-1.5 text-center text-xs text-emerald-600">🎙️ Call connected</div>
+              <div className="flex items-center justify-center gap-1.5 bg-emerald-50 px-4 py-1.5 text-center text-xs text-emerald-600"><Mic className="h-3.5 w-3.5" /> Call connected</div>
             )}
 
             <div className="flex-1 space-y-2 overflow-y-auto p-4">
               {messages.length === 0 && (
-                <p className="text-center text-xs text-slate-400">No messages yet. Say hi 👋</p>
+                <p className="text-center text-xs text-slate-400">No messages yet. Start the conversation.</p>
               )}
               {messages.map((m) => {
                 const mine = m.sender_employee_id === user.employeeId;

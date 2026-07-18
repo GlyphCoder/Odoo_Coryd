@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import { X, Smartphone, CheckCircle, XCircle } from 'lucide-react';
 import api from '../api.js';
 import { Button } from './ui.jsx';
 
@@ -103,16 +104,16 @@ export default function RazorpayQR({ tripId, amount, onSuccess, onClose }) {
       <div className="relative w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl mx-4">
 
         {/* Close button */}
-        <button
+          <button
           onClick={onClose}
-          className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 text-xl font-bold"
+          className="absolute right-4 top-4 text-slate-400 hover:text-slate-600"
         >
-          ✕
+          <X className="h-4 w-4" />
         </button>
 
         {/* Header */}
         <div className="mb-5 text-center">
-          <div className="mb-1 text-3xl">📱</div>
+          <div className="mb-1 flex justify-center text-brand"><Smartphone className="h-8 w-8" /></div>
           <h2 className="text-lg font-bold text-slate-800">Scan to Pay</h2>
           <p className="text-sm text-slate-500">
             Use any UPI app — GPay, PhonePe, Paytm, BHIM
@@ -180,7 +181,7 @@ export default function RazorpayQR({ tripId, amount, onSuccess, onClose }) {
               href={upiLink}
               className="block w-full rounded-xl bg-gradient-to-r from-teal-500 to-teal-600 py-3 text-center text-sm font-semibold text-white shadow hover:from-teal-600 hover:to-teal-700 transition mb-2"
             >
-              📱 Open UPI App directly
+              <Smartphone className="h-4 w-4" /> Open UPI App directly
             </a>
             <p className="text-center text-xs text-slate-400">
               QR refreshes automatically once paid
@@ -192,7 +193,7 @@ export default function RazorpayQR({ tripId, amount, onSuccess, onClose }) {
         {phase === 'paid' && (
           <div className="flex flex-col items-center gap-3 py-8">
             <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100">
-              <span className="text-5xl">✅</span>
+              <CheckCircle className="h-12 w-12 text-emerald-500" strokeWidth={1.5} />
             </div>
             <p className="text-xl font-bold text-emerald-700">Payment received!</p>
             <p className="text-sm text-slate-500">
@@ -205,7 +206,7 @@ export default function RazorpayQR({ tripId, amount, onSuccess, onClose }) {
         {phase === 'error' && (
           <div className="flex flex-col items-center gap-4 py-6">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-rose-100">
-              <span className="text-3xl">❌</span>
+              <XCircle className="h-9 w-9 text-rose-500" strokeWidth={1.5} />
             </div>
             <p className="text-center text-sm text-rose-600 font-medium">{errMsg}</p>
             <Button variant="outline" onClick={onClose}>Close</Button>

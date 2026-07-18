@@ -16,7 +16,7 @@ const config = {
     // Nominatim kept as an optional fallback (needs a valid contact UA).
     nominatimUrl: process.env.NOMINATIM_URL || 'https://nominatim.openstreetmap.org',
     osrmUrl: process.env.OSRM_URL || 'https://router.project-osrm.org',
-    userAgent: process.env.GEO_USER_AGENT || 'carpool-hackathon/1.0',
+    userAgent: process.env.GEO_USER_AGENT || 'coryd-hackathon/1.0',
   },
   razorpay: {
     keyId: process.env.RAZORPAY_KEY_ID || '',

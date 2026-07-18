@@ -62,7 +62,7 @@ const io = new SocketServer(server, {
 registerSockets(io);
 
 server.listen(config.port, config.host, () => {
-  console.log(`\n🚗 Carpool API + realtime listening on http://${config.host}:${config.port}`);
+  console.log(`\n🚗 CoRYD API + realtime listening on http://${config.host}:${config.port}`);
   console.log(`   CORS origin: ${config.clientOrigin}`);
   console.log(`   RLS enforcement: ${config.enableRls ? 'ON' : 'OFF (app-layer scoping)'}\n`);
 });

@@ -18,9 +18,17 @@ const carIcon = L.divIcon({
   className: 'car-pin',
   html: `
     <div style="position:relative;width:36px;height:36px">
-      <div style="position:absolute;inset:0;border-radius:50%;background:rgba(13,148,136,.2);animation:carPing 1.6s ease-out infinite"></div>
-      <div style="position:absolute;inset:6px;border-radius:50%;background:rgba(13,148,136,.35);animation:carPing 1.6s ease-out infinite .4s"></div>
-      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:20px">🚗</div>
+      <div style="position:absolute;inset:0;border-radius:50%;background:rgba(22,163,74,.2);animation:carPing 1.6s ease-out infinite"></div>
+      <div style="position:absolute;inset:6px;border-radius:50%;background:rgba(22,163,74,.35);animation:carPing 1.6s ease-out infinite .4s"></div>
+      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 17H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2"/>
+          <path d="M19 17h2a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-2"/>
+          <rect x="5" y="7" width="14" height="10" rx="1"/>
+          <circle cx="7.5" cy="17" r="1.5"/>
+          <circle cx="16.5" cy="17" r="1.5"/>
+        </svg>
+      </div>
     </div>`,
   iconSize: [36, 36],
   iconAnchor: [18, 18],
@@ -108,7 +116,7 @@ function AnimatedCarMarker({ position }) {
       position={[position.lat, position.lng]}
       icon={carIcon}
     >
-      <Popup>🚗 Driver live location</Popup>
+      <Popup>Driver live location</Popup>
     </Marker>
   );
 }
@@ -177,12 +185,12 @@ export default function MapView({
       {/* Pickup & destination markers */}
       {pickup && (
         <Marker position={[pickup.lat, pickup.lng]} icon={pickupIcon}>
-          <Popup>📍 {pickup.address || 'Pickup'}</Popup>
+          <Popup>Pickup: {pickup.address || 'Pickup'}</Popup>
         </Marker>
       )}
       {destination && (
         <Marker position={[destination.lat, destination.lng]} icon={destIcon}>
-          <Popup>🏁 {destination.address || 'Destination'}</Popup>
+          <Popup>Destination: {destination.address || 'Destination'}</Popup>
         </Marker>
       )}
 
@@ -217,7 +225,7 @@ export default function MapView({
       {/* User's own live location — pulsing blue dot */}
       {myLocation && (
         <Marker position={[myLocation.lat, myLocation.lng]} icon={myLocIcon}>
-          <Popup>📍 Your location</Popup>
+          <Popup>Your location</Popup>
         </Marker>
       )}
 

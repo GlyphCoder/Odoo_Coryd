@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { MapPin, ArrowRight, Loader2 } from 'lucide-react';
 import api from '../api.js';
 import { Card, Badge, Empty, Spinner, money } from '../components/ui.jsx';
 import MapView from '../components/MapView.jsx';
@@ -76,14 +77,14 @@ export default function RideHistory() {
                       <Badge status={h.final_status} />
                       <span className="text-xs text-slate-400">{h.trip_date}</span>
                     </div>
-                    <p className="mt-1 text-sm text-slate-600">
-                      <span className="text-brand-dark font-bold">●</span>{' '}
-                      {h.pickup_address}
-                    </p>
-                    <p className="text-sm text-slate-600">
-                      <span className="text-rose-500 font-bold">●</span>{' '}
-                      {h.destination_address}
-                    </p>
+                    {/* Route: pickup → destination in one line */}
+                    <div className="mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden text-sm text-slate-600">
+                      <MapPin className="h-3.5 w-3.5 shrink-0 text-brand" />
+                      <span className="flex-1 min-w-0 truncate">{h.pickup_address}</span>
+                      <ArrowRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                      <MapPin className="h-3.5 w-3.5 shrink-0 text-rose-500" />
+                      <span className="flex-1 min-w-0 truncate">{h.destination_address}</span>
+                    </div>
                     <p className="mt-1 text-xs text-slate-400">
                       {h.driver_name} → {h.passenger_name}
                     </p>
@@ -112,8 +113,8 @@ export default function RideHistory() {
 
                     {/* Mini Leaflet map */}
                     {loading ? (
-                      <div className="flex items-center justify-center py-10 text-slate-400 text-sm">
-                        <span className="animate-spin mr-2">⏳</span> Loading route…
+                      <div className="flex items-center justify-center gap-2 py-10 text-slate-400 text-sm">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Loading route…
                       </div>
                     ) : (
                       <MapView
