@@ -1,10 +1,56 @@
 import { Router } from 'express';
+import crypto from 'node:crypto';
 import { query, withTenant } from '../db.js';
 import { asyncHandler, badRequest, notFound, forbidden } from '../utils/http.js';
 import { requireAuth, requireEmployee } from '../middleware/auth.js';
+import config from '../config.js';
 
 const router = Router();
 router.use(requireAuth, requireEmployee);
+
+const RAZORPAY_ORDERS_URL = 'https://api.razorpay.com/v1/orders';
+
+function requireRazorpayConfig() {
+  if (!config.razorpay.keyId || !config.razorpay.keySecret) {
+    throw badRequest('Razorpay keys are not configured on the server');
+  }
+}
+
+function verifyRazorpaySignature(orderId, paymentId, signature) {
+  const expected = crypto
+    .createHmac('sha256', config.razorpay.keySecret)
+    .update(`${orderId}|${paymentId}`)
+    .digest('hex');
+  const actual = Buffer.from(signature || '');
+  const expectedBuffer = Buffer.from(expected);
+  return actual.length === expectedBuffer.length && crypto.timingSafeEqual(expectedBuffer, actual);
+}
+
+function razorpayAuthHeader() {
+  return `Basic ${Buffer.from(`${config.razorpay.keyId}:${config.razorpay.keySecret}`).toString('base64')}`;
+}
+
+async function fetchRazorpayOrder(orderId) {
+  const rpRes = await fetch(`${RAZORPAY_ORDERS_URL}/${orderId}`, {
+    headers: { Authorization: razorpayAuthHeader() },
+  });
+  const order = await rpRes.json().catch(() => null);
+  if (!rpRes.ok) {
+    throw badRequest(order?.error?.description || 'Could not verify Razorpay order');
+  }
+  return order;
+}
+
+async function verifyRazorpayOrderForPayment(payment, orderId, method) {
+  const order = await fetchRazorpayOrder(orderId);
+  const expectedAmount = Math.round(Number(payment.amount) * 100);
+  if (order.receipt !== payment.payment_id || order.amount !== expectedAmount || order.currency !== 'INR') {
+    throw badRequest('Razorpay order does not match this payment');
+  }
+  if (order.notes?.method && order.notes.method !== method) {
+    throw badRequest('Razorpay order method does not match this payment');
+  }
+}
 
 /** GET /api/payments/trip/:tripId — latest payment for a trip. */
 router.get('/trip/:tripId', asyncHandler(async (req, res) => {
@@ -15,14 +61,76 @@ router.get('/trip/:tripId', asyncHandler(async (req, res) => {
 }));
 
 /**
+ * POST /api/payments/razorpay/order — create a Razorpay Checkout order.
+ * body: { tripId, method: 'CARD'|'UPI' }
+ */
+router.post('/razorpay/order', asyncHandler(async (req, res) => {
+  const { tripId, method } = req.body || {};
+  if (!tripId || !method) throw badRequest('tripId and method are required');
+  if (!['CARD', 'UPI'].includes(method)) throw badRequest('Razorpay is only available for CARD or UPI');
+  requireRazorpayConfig();
+
+  const payment = (await query(
+    `SELECT * FROM payments WHERE trip_id=$1 AND organization_id=$2 AND status='PENDING'`,
+    [tripId, req.auth.orgId])).rows[0];
+  if (!payment) throw notFound('No pending payment for this trip');
+  if (payment.payer_employee_id !== req.auth.employeeId) throw forbidden('Only the passenger can pay for this trip');
+
+  const amount = Math.round(Number(payment.amount) * 100);
+  if (!Number.isFinite(amount) || amount <= 0) throw badRequest('Invalid payment amount');
+
+  const rpRes = await fetch(RAZORPAY_ORDERS_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: razorpayAuthHeader(),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      amount,
+      currency: 'INR',
+      receipt: payment.payment_id,
+      notes: {
+        tripId,
+        paymentId: payment.payment_id,
+        organizationId: req.auth.orgId,
+        method,
+      },
+    }),
+  });
+
+  const order = await rpRes.json().catch(() => null);
+  if (!rpRes.ok) {
+    throw badRequest(order?.error?.description || 'Could not create Razorpay order');
+  }
+
+  res.json({
+    keyId: config.razorpay.keyId,
+    order,
+    payment: {
+      payment_id: payment.payment_id,
+      amount: payment.amount,
+    },
+  });
+}));
+
+/**
  * POST /api/payments/pay — settle a trip payment.
  * body: { tripId, method: 'CASH'|'CARD'|'UPI'|'WALLET', gatewayRef? }
  * Only the passenger (payer) may pay. WALLET moves balance passenger -> driver.
  */
 router.post('/pay', asyncHandler(async (req, res) => {
-  const { tripId, method, gatewayRef } = req.body || {};
+  const { tripId, method, gatewayRef, razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body || {};
   if (!tripId || !method) throw badRequest('tripId and method are required');
   if (!['CASH', 'CARD', 'UPI', 'WALLET'].includes(method)) throw badRequest('Invalid payment method');
+  if (['CARD', 'UPI'].includes(method)) {
+    requireRazorpayConfig();
+    if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+      throw badRequest('Razorpay verification details are required');
+    }
+    if (!verifyRazorpaySignature(razorpayOrderId, razorpayPaymentId, razorpaySignature)) {
+      throw badRequest('Razorpay payment verification failed');
+    }
+  }
   const orgId = req.auth.orgId;
   const me = req.auth.employeeId;
 
@@ -32,6 +140,9 @@ router.post('/pay', asyncHandler(async (req, res) => {
       [tripId, orgId])).rows[0];
     if (!payment) throw notFound('No pending payment for this trip');
     if (payment.payer_employee_id !== me) throw forbidden('Only the passenger can pay for this trip');
+    if (['CARD', 'UPI'].includes(method)) {
+      await verifyRazorpayOrderForPayment(payment, razorpayOrderId, method);
+    }
 
     if (method === 'WALLET') {
       const payerWallet = (await client.query(
@@ -69,7 +180,7 @@ router.post('/pay', asyncHandler(async (req, res) => {
     const updated = (await client.query(
       `UPDATE payments SET status='COMPLETED', payment_method=$3, payment_gateway_ref=$4, paid_at=now()
        WHERE payment_id=$1 AND organization_id=$2 RETURNING *`,
-      [payment.payment_id, orgId, method, gatewayRef || null])).rows[0];
+      [payment.payment_id, orgId, method, razorpayPaymentId || gatewayRef || null])).rows[0];
 
     await client.query(
       `INSERT INTO notifications (organization_id, employee_id, title, body, notif_type)

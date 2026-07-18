@@ -9,6 +9,26 @@ import { Button, Card, Badge, money } from '../components/ui.jsx';
 const NEXT = { BOOKED: 'STARTED', STARTED: 'IN_PROGRESS', IN_PROGRESS: 'COMPLETED' };
 const NEXT_LABEL = { BOOKED: 'Start trip', STARTED: 'Begin journey', IN_PROGRESS: 'Complete trip' };
 const RTC_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+const RAZORPAY_CHECKOUT_URL = 'https://checkout.razorpay.com/v1/checkout.js';
+
+function loadRazorpayCheckout() {
+  if (window.Razorpay) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${RAZORPAY_CHECKOUT_URL}"]`);
+    if (existing) {
+      existing.addEventListener('load', resolve, { once: true });
+      existing.addEventListener('error', reject, { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = RAZORPAY_CHECKOUT_URL;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error('Could not load Razorpay Checkout'));
+    document.body.appendChild(script);
+  });
+}
 
 export default function TripDetail() {
   const { id } = useParams();
@@ -22,6 +42,7 @@ export default function TripDetail() {
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [payingMethod, setPayingMethod] = useState('');
   const [callState, setCallState] = useState('idle'); // idle|calling|incoming|connected
 
   const socketRef = useRef(null);
@@ -194,12 +215,80 @@ export default function TripDetail() {
 
   // ── Payment ──────────────────────────────────────────────
   const pay = async (method) => {
+    if (['CARD', 'UPI'].includes(method)) {
+      await payWithRazorpay(method);
+      return;
+    }
+
     setBusy(true); setError('');
     try {
       const { data } = await api.post('/payments/pay', { tripId: id, method });
       setPayment(data.payment);
     } catch (e) { setError(apiError(e)); }
     finally { setBusy(false); }
+  };
+
+  const payWithRazorpay = async (method) => {
+    setBusy(true); setPayingMethod(method); setError('');
+    try {
+      const { data } = await api.post('/payments/razorpay/order', { tripId: id, method });
+      await loadRazorpayCheckout();
+
+      await new Promise((resolve, reject) => {
+        const checkout = new window.Razorpay({
+          key: data.keyId,
+          amount: data.order.amount,
+          currency: data.order.currency,
+          name: 'Coryd Carpool',
+          description: `${method} payment for trip fare`,
+          order_id: data.order.id,
+          prefill: {
+            name: user.fullName || '',
+            email: user.email || '',
+            contact: user.phoneNumber || '',
+          },
+          notes: {
+            tripId: id,
+            paymentId: data.payment.payment_id,
+            method,
+          },
+          config: {
+            display: {
+              blocks: {
+                selected_method: {
+                  name: method === 'UPI' ? 'Pay using UPI' : 'Pay using card',
+                  instruments: [{ method: method.toLowerCase() }],
+                },
+              },
+              sequence: ['block.selected_method'],
+              preferences: { show_default_blocks: true },
+            },
+          },
+          theme: { color: '#2563eb' },
+          modal: {
+            ondismiss: () => resolve(),
+          },
+          handler: async (response) => {
+            try {
+              const verified = await api.post('/payments/pay', {
+                tripId: id,
+                method,
+                razorpayOrderId: response.razorpay_order_id,
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpaySignature: response.razorpay_signature,
+              });
+              setPayment(verified.data.payment);
+              resolve();
+            } catch (e) {
+              reject(e);
+            }
+          },
+        });
+
+        checkout.open();
+      });
+    } catch (e) { setError(apiError(e)); }
+    finally { setBusy(false); setPayingMethod(''); }
   };
 
   if (!trip) return <div className="p-8 text-slate-500">{error || 'Loading…'}</div>;
@@ -270,7 +359,9 @@ export default function TripDetail() {
                   <p className="mb-3 text-sm text-slate-600">Amount due: <b>{money(payment.amount)}</b></p>
                   <div className="flex flex-wrap gap-2">
                     {['CASH', 'CARD', 'UPI', 'WALLET'].map((m) => (
-                      <Button key={m} variant="subtle" onClick={() => pay(m)} disabled={busy}>{m}</Button>
+                      <Button key={m} variant="subtle" onClick={() => pay(m)} disabled={busy}>
+                        {payingMethod === m ? 'Opening...' : m}
+                      </Button>
                     ))}
                   </div>
                 </>

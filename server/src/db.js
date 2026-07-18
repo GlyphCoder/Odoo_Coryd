@@ -1,12 +1,27 @@
 import pg from 'pg';
+import dns from 'node:dns';
 import config from './config.js';
 
 const { Pool } = pg;
 
+dns.setDefaultResultOrder('ipv4first');
+
+function normalizeDatabaseUrl(databaseUrl) {
+  if (!databaseUrl) return databaseUrl;
+
+  const url = new URL(databaseUrl);
+  if (url.searchParams.get('sslmode') === 'require') {
+    url.searchParams.set('sslmode', 'verify-full');
+  }
+  return url.toString();
+}
+
+const databaseUrl = normalizeDatabaseUrl(config.databaseUrl);
+
 // Supabase requires SSL. reject unauthorized off for the pooled/managed cert.
 const pool = new Pool({
-  connectionString: config.databaseUrl,
-  ssl: config.databaseUrl.includes('localhost') ? false : { rejectUnauthorized: false },
+  connectionString: databaseUrl,
+  ssl: databaseUrl.includes('localhost') ? false : { rejectUnauthorized: false },
   max: 10,
   idleTimeoutMillis: 30000,
 });

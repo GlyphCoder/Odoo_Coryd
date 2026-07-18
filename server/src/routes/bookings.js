@@ -46,7 +46,7 @@ router.post('/', asyncHandler(async (req, res) => {
 
     const newAvail = ride.available_seats - seats;
     await client.query(
-      `UPDATE rides SET available_seats=$1, status = CASE WHEN $1 <= 0 THEN 'FULL' ELSE status END, updated_at=now()
+      `UPDATE rides SET available_seats=$1::smallint, status = CASE WHEN $1::smallint <= 0 THEN 'FULL' ELSE status END, updated_at=now()
        WHERE ride_id=$2 AND organization_id=$3`,
       [newAvail, rideId, orgId]
     );
@@ -93,7 +93,7 @@ router.patch('/:id/cancel', asyncHandler(async (req, res) => {
       `UPDATE ride_bookings SET booking_status='CANCELLED', cancelled_at=now() WHERE booking_id=$1 AND organization_id=$2`,
       [booking.booking_id, orgId]);
     await client.query(
-      `UPDATE rides SET available_seats = LEAST(total_seats, available_seats + $1),
+      `UPDATE rides SET available_seats = LEAST(total_seats, (available_seats + $1::smallint)::smallint),
          status = CASE WHEN status='FULL' THEN 'OPEN' ELSE status END, updated_at=now()
        WHERE ride_id=$2 AND organization_id=$3`,
       [booking.seats_booked, booking.ride_id, orgId]);

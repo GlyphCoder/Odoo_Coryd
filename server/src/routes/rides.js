@@ -31,7 +31,7 @@ router.get('/', asyncHandler(async (req, res) => {
   let sql = `${RIDE_JOIN}
     WHERE r.organization_id = $1
       AND r.status = 'OPEN'
-      AND r.available_seats >= $2
+      AND r.available_seats >= $2::smallint
       AND r.departure_datetime >= now() - interval '1 hour'`;
   if (date) {
     params.push(date);
@@ -133,7 +133,7 @@ router.post('/', asyncHandler(async (req, res) => {
      b.pickupAddress, b.pickupLat, b.pickupLng,
      b.destinationAddress, b.destinationLat, b.destinationLng,
      polyline, distanceKm, durationMinutes,
-     b.departureDatetime, b.totalSeats, b.farePerSeat,
+     b.departureDatetime, parseInt(b.totalSeats, 10), b.farePerSeat,
      !!b.isRecurring, b.recurrencePattern ? JSON.stringify(b.recurrencePattern) : null]
   )).rows[0];
 
