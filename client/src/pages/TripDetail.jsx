@@ -1,17 +1,18 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Clock, CheckCircle, Banknote, Smartphone, Wallet2, Phone, Mic } from 'lucide-react';
+import { Clock, CheckCircle, Banknote, Smartphone, Wallet2, Phone } from 'lucide-react';
 import api, { apiError } from '../api.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { getSocket } from '../socket.js';
 import MapView from '../components/MapView.jsx';
 import RazorpayButton from '../components/RazorpayButton.jsx';
 import RazorpayQR from '../components/RazorpayQR.jsx';
+import AudioCallOverlay from '../components/AudioCallOverlay.jsx';
+import { useWebRTC } from '../hooks/useWebRTC.js';
 import { Button, Card, Badge, money } from '../components/ui.jsx';
 
 const NEXT       = { BOOKED: 'STARTED', STARTED: 'IN_PROGRESS', IN_PROGRESS: 'COMPLETED' };
 const NEXT_LABEL = { BOOKED: 'Start trip', STARTED: 'Begin journey', IN_PROGRESS: 'Complete trip' };
-const RTC_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
 /** Haversine distance in km */
 function haversineKm(a, b) {
@@ -44,23 +45,40 @@ export default function TripDetail() {
   const [vehiclePos, setVehiclePos] = useState(null);
   const [myLocation, setMyLocation] = useState(null);   // ← passenger live GPS
   const [peerOnline, setPeerOnline] = useState(false);
-  const [draft,      setDraft]      = useState('');
-  const [error,      setError]      = useState('');
-  const [busy,       setBusy]       = useState(false);
-  const [showQR,   setShowQR]   = useState(false);
-  const [callState,  setCallState]  = useState('idle'); // idle|calling|incoming|connected
-  const [eta,        setEta]        = useState(null);   // { distKm, minutes }
+  const [draft,  setDraft]  = useState('');
+  const [error,  setError]  = useState('');
+  const [busy,   setBusy]   = useState(false);
+  const [showQR, setShowQR] = useState(false);
+  const [eta,    setEta]    = useState(null);   // { distKm, minutes }
 
-  const socketRef      = useRef(null);
-  const pcRef          = useRef(null);
-  const localStreamRef = useRef(null);
-  const remoteAudioRef = useRef(null);
-  const watchRef       = useRef(null);  // driver GPS watch id
-  const myWatchRef     = useRef(null);  // passenger GPS watch id
-  const pendingOffer   = useRef(null);
-  const chatEnd        = useRef(null);
+  const socketRef  = useRef(null);
+  const watchRef   = useRef(null);  // driver GPS watch id
+  const myWatchRef = useRef(null);  // passenger GPS watch id
+  const chatEnd    = useRef(null);
 
   const iAmDriver = trip && trip.driver_employee_id === user.employeeId;
+
+  // ── Stable signal emitter — passed to the WebRTC hook ─────────────────
+  // Wrapped in useCallback so it never re-creates on every render.
+  const emitSignal = useCallback((type, data) => {
+    socketRef.current?.emit('call:signal', { tripId: id, type, data: data ?? null });
+  }, [id]);
+
+  // ── WebRTC hook — all peer-connection logic lives here ────────────────
+  const {
+    callState,
+    connStatus,
+    isMuted,
+    callError,
+    remoteAudioRef,
+    startCall,
+    endCall,
+    acceptCall,
+    rejectCall,
+    toggleMic,
+    handleSignal,
+    teardownCall,
+  } = useWebRTC({ tripId: id, myEmployeeId: user.employeeId, emitSignal });
 
   /* ── Load trip ── */
   const loadTrip = useCallback(async () => {
@@ -128,6 +146,7 @@ export default function TripDetail() {
       socket.off('presence:leave',  onLeave);
       socket.off('call:signal',     onSignal);
       stopLocationWatch();
+      // Clean up the WebRTC call if the user navigates away mid-call.
       teardownCall(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -187,66 +206,7 @@ export default function TripDetail() {
     setDraft('');
   };
 
-  /* ── WebRTC voice call ── */
-  async function getMic() {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    localStreamRef.current = stream;
-    return stream;
-  }
-  function newPeer() {
-    const pc = new RTCPeerConnection(RTC_CONFIG);
-    pc.onicecandidate = (e) => {
-      if (e.candidate) socketRef.current?.emit('call:signal', { tripId: id, type: 'ice', data: e.candidate });
-    };
-    pc.ontrack = (e) => { if (remoteAudioRef.current) remoteAudioRef.current.srcObject = e.streams[0]; };
-    pc.onconnectionstatechange = () => {
-      if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) teardownCall(true);
-    };
-    pcRef.current = pc;
-    return pc;
-  }
-  async function startCall() {
-    try {
-      setCallState('calling');
-      const pc = newPeer();
-      const stream = await getMic();
-      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
-      socketRef.current?.emit('call:signal', { tripId: id, type: 'invite' });
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      socketRef.current?.emit('call:signal', { tripId: id, type: 'offer', data: offer });
-    } catch (e) { setError('Microphone unavailable'); teardownCall(false); }
-  }
-  async function acceptCall() {
-    try {
-      const pc = pcRef.current || newPeer();
-      const stream = await getMic();
-      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
-      await pc.setRemoteDescription(new RTCSessionDescription(pendingOffer.current));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      socketRef.current?.emit('call:signal', { tripId: id, type: 'answer', data: answer });
-      setCallState('connected');
-    } catch (e) { setError('Could not start call'); teardownCall(true); }
-  }
-  async function handleSignal(msg) {
-    const { type, data } = msg;
-    if (type === 'invite') { if (callState === 'idle') setCallState('incoming'); return; }
-    if (type === 'offer')  { pendingOffer.current = data; newPeer(); if (callState !== 'connected') setCallState('incoming'); return; }
-    if (type === 'answer') { await pcRef.current?.setRemoteDescription(new RTCSessionDescription(data)); setCallState('connected'); return; }
-    if (type === 'ice')    { try { await pcRef.current?.addIceCandidate(new RTCIceCandidate(data)); } catch {} return; }
-    if (type === 'reject' || type === 'end') { teardownCall(false); return; }
-  }
-  function endCall()    { socketRef.current?.emit('call:signal', { tripId: id, type: 'end' });    teardownCall(false); }
-  function rejectCall() { socketRef.current?.emit('call:signal', { tripId: id, type: 'reject' }); teardownCall(false); }
-  function teardownCall() {
-    try { pcRef.current?.close(); } catch {}
-    pcRef.current = null;
-    localStreamRef.current?.getTracks().forEach((t) => t.stop());
-    localStreamRef.current = null;
-    pendingOffer.current = null;
-    setCallState('idle');
-  }
+  /* ── WebRTC voice call: all logic is in useWebRTC hook (see hooks/useWebRTC.js) ── */
 
   /* ── Payment ── */
   const pay = async (method) => {
@@ -433,23 +393,32 @@ export default function TripDetail() {
                   {peer.role} · {peerOnline ? 'online' : 'offline'}
                 </div>
               </div>
-              {callState === 'idle'      && <Button variant="subtle" onClick={startCall}><Phone className="h-4 w-4" /> Call</Button>}
-              {callState === 'calling'   && <Button variant="danger" onClick={endCall}>Cancel</Button>}
-              {callState === 'connected' && <Button variant="danger" onClick={endCall}>End call</Button>}
+              {/* Call button — only show when idle and peer is online */}
+              {callState === 'idle' && (
+                <Button variant="subtle" onClick={startCall} disabled={!peerOnline} title={!peerOnline ? 'Peer is offline' : 'Start a voice call'}>
+                  <Phone className="h-4 w-4" /> Call
+                </Button>
+              )}
+              {/* Active call status badge in header */}
+              {callState === 'calling' && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" /> Calling…
+                </span>
+              )}
+              {callState === 'connected' && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> In call
+                </span>
+              )}
+              {callState === 'incoming' && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-3 py-1 text-xs font-semibold text-brand-dark ring-1 ring-brand/20">
+                  <Phone className="h-3.5 w-3.5" /> Incoming…
+                </span>
+              )}
             </div>
 
-            {callState === 'incoming' && (
-              <div className="flex items-center justify-between bg-brand/10 px-4 py-2 text-sm">
-                <span className="inline-flex items-center gap-1"><Phone className="h-4 w-4" /> Incoming call…</span>
-                <span className="flex gap-2">
-                  <Button onClick={acceptCall}>Accept</Button>
-                  <Button variant="danger" onClick={rejectCall}>Decline</Button>
-                </span>
-              </div>
-            )}
-            {callState === 'connected' && (
-              <div className="flex items-center justify-center gap-1.5 bg-emerald-50 px-4 py-1.5 text-center text-xs text-emerald-600"><Mic className="h-3.5 w-3.5" /> Call connected</div>
-            )}
+
+
 
             <div className="flex-1 space-y-2 overflow-y-auto p-4">
               {messages.length === 0 && (
@@ -505,7 +474,20 @@ export default function TripDetail() {
         />
       )}
 
-      <audio ref={remoteAudioRef} autoPlay />
+      {/* ── Audio call overlay — renders as a full-screen modal when call is active ── */}
+      <AudioCallOverlay
+        callState={callState}
+        connStatus={connStatus}
+        peerName={peer.name}
+        peerRole={peer.role}
+        isMuted={isMuted}
+        callError={callError}
+        remoteAudioRef={remoteAudioRef}
+        onAccept={acceptCall}
+        onReject={rejectCall}
+        onEnd={endCall}
+        onToggleMic={toggleMic}
+      />
     </div>
   );
 }

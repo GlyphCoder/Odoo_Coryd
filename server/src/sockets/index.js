@@ -115,16 +115,32 @@ export function registerSockets(io) {
       if (tripId) socket.to(roomFor(tripId)).emit('chat:typing', { employeeId, fullName });
     });
 
-    // ── WebRTC voice-call signaling (relayed peer-to-peer) ─
+    // ── WebRTC voice-call signaling (relayed peer-to-peer) ─────────────
     // A single relay for invite/offer/answer/ice/end. Media flows P2P via WebRTC;
     // only signaling passes through the server, scoped to the trip room.
+    //
+    // How it works:
+    //   1. Caller emits 'invite' → server relays to peer, sets socket.data.inCall
+    //   2. Peer emits 'offer'   → server relays SDP offer
+    //   3. Callee emits 'answer'→ server relays SDP answer
+    //   4. Both sides emit 'ice'→ server relays ICE candidates
+    //   5. Either side emits 'end'/'reject' → server relays + clears inCall
     socket.on('call:signal', async ({ tripId, type, data } = {}) => {
       if (!tripId || !type) return;
       const trip = await loadTripIfParticipant(orgId, tripId, employeeId);
       if (!trip) return;
+
+      // Relay the signal directly to the other participant in the trip room.
       socket.to(roomFor(tripId)).emit('call:signal', { from: employeeId, fromName: fullName, type, data });
 
-      // Log call start/end into chat as CALL_LOG for history.
+      // Track whether this socket is currently in a call so we can clean up on disconnect.
+      if (type === 'invite') {
+        socket.data.inCall = tripId;
+      } else if (type === 'end' || type === 'reject') {
+        socket.data.inCall = null;
+      }
+
+      // Persist call-start and call-end events into chat history as CALL_LOG entries.
       if (type === 'invite' || type === 'end') {
         try {
           await query(
@@ -132,13 +148,27 @@ export function registerSockets(io) {
              VALUES ($1,$2,$3,$4,'CALL_LOG')`,
             [orgId, tripId, employeeId, type === 'invite' ? 'Voice call started' : 'Voice call ended']
           );
-        } catch { /* ignore */ }
+        } catch { /* ignore — chat log is non-critical */ }
       }
     });
 
     socket.on('disconnect', () => {
+      // Notify the trip room of the user's departure (presence tracking).
       if (socket.data.tripId) {
         socket.to(roomFor(socket.data.tripId)).emit('presence:leave', { employeeId });
+      }
+
+      // ── Mid-call disconnect cleanup ──────────────────────────────────
+      // If this socket was actively in a call when it disconnected (tab closed,
+      // network drop, etc.), relay a synthetic 'end' signal to the peer so their
+      // call UI tears down instead of hanging indefinitely.
+      if (socket.data.inCall) {
+        socket.to(roomFor(socket.data.inCall)).emit('call:signal', {
+          from: employeeId,
+          fromName: fullName,
+          type: 'end',
+          data: null,
+        });
       }
     });
   });
