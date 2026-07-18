@@ -38,7 +38,7 @@ function verifySignature(orderId, paymentId, signature) {
    GET /api/payments/razorpay/config
    Returns the public key_id so the frontend can initialise the SDK.
 ───────────────────────────────────────────────────────────────── */
-router.get('/config', asyncHandler(async (_req, res) => {
+router.get('/razorpay/config', asyncHandler(async (_req, res) => {
   if (!config.razorpay.keyId) {
     return res.json({ enabled: false, keyId: null });
   }
@@ -51,7 +51,7 @@ router.get('/config', asyncHandler(async (_req, res) => {
    Creates a Razorpay UPI QR Code — passenger scans with any UPI app.
    Returns { qrId, imageUrl, amount, expiresAt }
 ───────────────────────────────────────────────────────────────── */
-router.post('/qr', asyncHandler(async (req, res) => {
+router.post('/razorpay/qr', asyncHandler(async (req, res) => {
   const { tripId } = req.body || {};
   if (!tripId) throw badRequest('tripId is required');
 
@@ -99,7 +99,7 @@ router.post('/qr', asyncHandler(async (req, res) => {
    GET /api/payments/razorpay/qr/:qrId/status?tripId=
    Polls whether the QR payment has been completed.
 ───────────────────────────────────────────────────────────────── */
-router.get('/qr/:qrId/status', asyncHandler(async (req, res) => {
+router.get('/razorpay/qr/:qrId/status', asyncHandler(async (req, res) => {
   const { tripId } = req.query;
   if (!tripId) throw badRequest('tripId query param required');
 
@@ -143,7 +143,7 @@ router.get('/qr/:qrId/status', asyncHandler(async (req, res) => {
    body: { tripId }
    Creates a Razorpay Order and returns orderId + amount for checkout.
 ───────────────────────────────────────────────────────────────── */
-router.post('/order', asyncHandler(async (req, res) => {
+router.post('/razorpay/order', asyncHandler(async (req, res) => {
   const { tripId } = req.body || {};
   if (!tripId) throw badRequest('tripId is required');
 
@@ -194,7 +194,7 @@ router.post('/order', asyncHandler(async (req, res) => {
    body: { razorpay_order_id, razorpay_payment_id, razorpay_signature, tripId }
    Verifies HMAC, then marks the DB payment COMPLETED.
 ───────────────────────────────────────────────────────────────── */
-router.post('/verify', asyncHandler(async (req, res) => {
+router.post('/razorpay/verify', asyncHandler(async (req, res) => {
   const {
     razorpay_order_id,
     razorpay_payment_id,
