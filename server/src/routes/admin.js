@@ -83,8 +83,8 @@ router.post('/employees', asyncHandler(async (req, res) => {
         [email.toLowerCase(), phoneNumber || null, hash, fullName])).rows[0];
     }
     const e = (await client.query(
-      `INSERT INTO employees (organization_id, user_id, employee_code, department, designation)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      `INSERT INTO employees (organization_id, user_id, employee_code, department, designation, status)
+       VALUES ($1,$2,$3,$4,$5,'ACTIVE') RETURNING *`,
       [orgId, user.user_id, employeeCode || null, department || null, designation || null])).rows[0];
     await client.query(`INSERT INTO wallets (organization_id, employee_id, balance) VALUES ($1,$2,0) ON CONFLICT DO NOTHING`,
       [orgId, e.employee_id]);
@@ -97,7 +97,7 @@ router.post('/employees', asyncHandler(async (req, res) => {
 /** PATCH /api/admin/employees/:id/status — activate / deactivate / suspend. */
 router.patch('/employees/:id/status', asyncHandler(async (req, res) => {
   const { status } = req.body || {};
-  if (!['ACTIVE', 'INACTIVE', 'SUSPENDED'].includes(status)) throw badRequest('Invalid status');
+  if (!['ACTIVE', 'INACTIVE', 'SUSPENDED', 'PENDING'].includes(status)) throw badRequest('Invalid status');
   const row = (await query(
     `UPDATE employees SET status=$3, updated_at=now() WHERE employee_id=$1 AND organization_id=$2 RETURNING employee_id, status`,
     [req.params.id, req.auth.orgId, status])).rows[0];

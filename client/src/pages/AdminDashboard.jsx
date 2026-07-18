@@ -256,7 +256,7 @@ function Employees() {
                       </div>
                     </div>
                     <Select value={e.status} onChange={(ev) => setStatus(e.employee_id, ev.target.value)} className="w-36">
-                      {['ACTIVE', 'INACTIVE', 'SUSPENDED'].map((s) => <option key={s}>{s}</option>)}
+                      {['PENDING', 'ACTIVE', 'INACTIVE', 'SUSPENDED'].map((s) => <option key={s}>{s}</option>)}
                     </Select>
                   </div>
                 ))}

@@ -16,14 +16,17 @@ export default function Signup() {
   });
   const [showPw, setShowPw] = useState(false);
   const [error, setError]   = useState('');
+  const [success, setSuccess] = useState('');
   const [busy, setBusy]     = useState(false);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   const submit = async (e) => {
     e.preventDefault();
-    setError(''); setBusy(true);
-    try { await signup(form); navigate('/app'); }
-    catch (err) { setError(apiError(err)); }
+    setError(''); setSuccess(''); setBusy(true);
+    try {
+      const res = await signup(form);
+      setSuccess(res.message);
+    } catch (err) { setError(apiError(err)); }
     finally { setBusy(false); }
   };
 
@@ -125,9 +128,18 @@ export default function Signup() {
 
                 {error && <Alert variant="error">{error}</Alert>}
 
-                <Button type="submit" disabled={busy} size="lg" className="w-full">
-                  {busy ? 'Creating account…' : <>Create account <ArrowRight className="h-4 w-4" /></>}
-                </Button>
+                {success ? (
+                  <Alert variant="success" title="Success">
+                    <p>{success}</p>
+                    <p className="mt-2">
+                      <Link to="/login" className="font-semibold text-brand underline">Go to Login</Link>
+                    </p>
+                  </Alert>
+                ) : (
+                  <Button type="submit" disabled={busy} size="lg" className="w-full">
+                    {busy ? 'Creating account…' : <>Create account <ArrowRight className="h-4 w-4" /></>}
+                  </Button>
+                )}
               </form>
 
               <p className="mt-6 text-center text-sm text-ink-500">

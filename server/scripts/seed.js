@@ -134,8 +134,8 @@ async function main() {
         [e.email, hash, e.name]
       )).rows[0];
       const emp = (await c.query(
-        `INSERT INTO employees (organization_id, user_id, employee_code, department, designation)
-         VALUES ($1,$2,$3,$4,$5)
+        `INSERT INTO employees (organization_id, user_id, employee_code, department, designation, status)
+         VALUES ($1,$2,$3,$4,$5,'ACTIVE')
          RETURNING *`,
         [orgId, user.user_id, e.employeeCode || null, e.dept, e.desig]
       )).rows[0];

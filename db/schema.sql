@@ -59,8 +59,8 @@ CREATE TABLE IF NOT EXISTS employees (
     employee_code     VARCHAR(30),
     department        VARCHAR(100),
     designation       VARCHAR(100),
-    status            VARCHAR(20) NOT NULL DEFAULT 'ACTIVE'
-                        CHECK (status IN ('ACTIVE','INACTIVE','SUSPENDED')),
+    status            VARCHAR(20) NOT NULL DEFAULT 'PENDING'
+                        CHECK (status IN ('ACTIVE','INACTIVE','SUSPENDED','PENDING')),
     joined_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),

@@ -56,16 +56,8 @@ router.post('/signup', asyncHandler(async (req, res) => {
     return { userRow, emp };
   });
 
-  const token = signToken({
-    userId: result.userRow.user_id,
-    orgId: org.organization_id,
-    employeeId: result.emp.employee_id,
-    isAdmin: false,
-    fullName: result.userRow.full_name,
-  });
-
   res.status(201).json({
-    token,
+    message: 'Account created successfully. Your account is pending admin approval. You will be able to log in once approved.',
     user: shapeUser(result.userRow, org, result.emp, false),
   });
 }));
@@ -89,7 +81,7 @@ router.post('/login', asyncHandler(async (req, res) => {
   const emp = (await query(
     `SELECT e.*, o.org_name FROM employees e
      JOIN organizations o ON o.organization_id = e.organization_id
-     WHERE e.user_id = $1 AND e.status = 'ACTIVE' LIMIT 1`,
+     WHERE e.user_id = $1 LIMIT 1`,
     [userRow.user_id]
   )).rows[0];
 
@@ -97,6 +89,11 @@ router.post('/login', asyncHandler(async (req, res) => {
     'SELECT * FROM organization_admins WHERE user_id = $1 LIMIT 1',
     [userRow.user_id]
   )).rows[0];
+
+  if (emp && !admin) {
+    if (emp.status === 'PENDING') throw badRequest('Your account is pending admin approval.');
+    if (emp.status !== 'ACTIVE') throw badRequest('Your account is inactive or suspended.');
+  }
 
   const orgId = emp?.organization_id || admin?.organization_id;
   if (!orgId) throw badRequest('This account is not linked to any organization');
