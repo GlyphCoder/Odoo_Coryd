@@ -7,8 +7,9 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': { target: 'http://localhost:4000', changeOrigin: true },
-      '/socket.io': { target: 'http://localhost:4000', ws: true, changeOrigin: true },
+      // 127.0.0.1 (not localhost) avoids IPv6 ::1 resolution missing the server.
+      '/api': { target: 'http://127.0.0.1:4000', changeOrigin: true },
+      '/socket.io': { target: 'http://127.0.0.1:4000', ws: true, changeOrigin: true },
     },
   },
 });

@@ -10,6 +10,9 @@ const config = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
   enableRls: String(process.env.ENABLE_RLS || 'false').toLowerCase() === 'true',
   geo: {
+    // Photon (Komoot) — free, keyless, permissive; ideal for autocomplete.
+    photonUrl: process.env.PHOTON_URL || 'https://photon.komoot.io',
+    // Nominatim kept as an optional fallback (needs a valid contact UA).
     nominatimUrl: process.env.NOMINATIM_URL || 'https://nominatim.openstreetmap.org',
     osrmUrl: process.env.OSRM_URL || 'https://router.project-osrm.org',
     userAgent: process.env.GEO_USER_AGENT || 'carpool-hackathon/1.0',
