@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { query } from '../db.js';
+import { query, withTenant } from '../db.js';
 import { asyncHandler, badRequest, notFound } from '../utils/http.js';
 import { requireAuth, requireEmployee } from '../middleware/auth.js';
 import { getRoute, haversineKm, sampleRouteNodes, reverseGeocode } from '../utils/geo.js';
@@ -21,8 +21,48 @@ const RIDE_JOIN = `
 const PICKUP_RADIUS_KM = 5;
 
 /**
+ * GET /api/rides/state — current ride/trip state for the logged-in employee.
+ * Returns:
+ *   asDriver:    active ride this employee published (OPEN/FULL), or null
+ *   asPassenger: active trip this employee is in (BOOKED/STARTED/IN_PROGRESS), or null
+ *
+ * Used by the client to gate "Offer Ride" and "Find Ride / Book" flows.
+ */
+router.get('/state', asyncHandler(async (req, res) => {
+  const orgId      = req.auth.orgId;
+  const employeeId = req.auth.employeeId;
+
+  // Active ride published by this driver
+  const asDriver = (await query(
+    `SELECT ride_id, status, pickup_address, destination_address, departure_datetime
+     FROM rides
+     WHERE organization_id = $1 AND driver_employee_id = $2
+       AND status IN ('OPEN','FULL','DRAFT')
+     ORDER BY departure_datetime DESC LIMIT 1`,
+    [orgId, employeeId]
+  )).rows[0] || null;
+
+  // Active trip where this employee is the passenger
+  const asPassenger = (await query(
+    `SELECT t.trip_id, t.status, r.pickup_address, r.destination_address, r.departure_datetime,
+            b.booking_id
+     FROM trips t
+     JOIN rides r ON r.ride_id = t.ride_id AND r.organization_id = t.organization_id
+     LEFT JOIN ride_bookings b ON b.booking_id = t.booking_id
+     WHERE t.organization_id = $1 AND t.passenger_employee_id = $2
+       AND t.status IN ('BOOKED','STARTED','IN_PROGRESS')
+     ORDER BY r.departure_datetime ASC LIMIT 1`,
+    [orgId, employeeId]
+  )).rows[0] || null;
+
+  const rideStatus = asDriver ? 'DRIVING' : asPassenger ? 'RIDING' : 'FREE';
+
+  res.json({ rideStatus, asDriver, asPassenger });
+}));
+
+/**
  * GET /api/rides — search open rides (org-scoped).
- * query: date (YYYY-MM-DD), seats, pickupLat, pickupLng, destLat, destLng, radiusKm
+ * query: date (YYYY-MM-DD), seats, pickupLat, pickupLng, radiusKm
  *
  * When pickupLat/pickupLng are provided, each ride is checked against its
  * pickup nodes: only rides where the passenger is within PICKUP_RADIUS_KM of
@@ -61,7 +101,6 @@ router.get('/', asyncHandler(async (req, res) => {
   if (pickupLat && pickupLng && !isNaN(+pickupLat) && !isNaN(+pickupLng)) {
     const passengerLoc = { lat: +pickupLat, lng: +pickupLng };
 
-    // Fetch all nodes for the candidate rides in a single query.
     if (rows.length > 0) {
       const rideIds = rows.map((r) => r.ride_id);
       const nodeRows = (await query(
@@ -71,18 +110,16 @@ router.get('/', asyncHandler(async (req, res) => {
         [rideIds]
       )).rows;
 
-      // Build a map: ride_id -> [{node}]
       const nodesByRide = {};
       for (const node of nodeRows) {
         if (!nodesByRide[node.ride_id]) nodesByRide[node.ride_id] = [];
         nodesByRide[node.ride_id].push(node);
       }
 
-      // Filter rides and attach the nearest node within radius.
       const eligible = [];
       for (const ride of rows) {
         const nodes = nodesByRide[ride.ride_id] || [];
-        if (nodes.length === 0) continue; // ride has no nodes yet, skip
+        if (nodes.length === 0) continue;
 
         let nearest = null;
         let nearestDist = Infinity;
@@ -103,7 +140,6 @@ router.get('/', asyncHandler(async (req, res) => {
     }
   }
 
-  // No location provided — return all rides without node filtering (browse mode).
   res.json({ rides: rows });
 }));
 
@@ -143,7 +179,6 @@ router.get('/:id', asyncHandler(async (req, res) => {
      WHERE b.organization_id = $1 AND b.ride_id = $2 AND b.booking_status = 'CONFIRMED'`,
     [req.auth.orgId, req.params.id]
   )).rows;
-  // Also return nodes for map display
   const nodes = (await query(
     `SELECT node_id, node_index, lat, lng, address FROM ride_pickup_nodes
      WHERE organization_id = $1 AND ride_id = $2 ORDER BY node_index`,
@@ -159,30 +194,54 @@ router.post('/', asyncHandler(async (req, res) => {
     'destinationAddress', 'destinationLat', 'destinationLng', 'departureDatetime', 'totalSeats'];
   for (const k of required) if (b[k] == null || b[k] === '') throw badRequest(`${k} is required`);
 
+  const orgId = req.auth.orgId;
+  const driverId = req.auth.employeeId;
+
+  // ── Guard: driver must not already have an active open/full ride ──
+  const existingRide = (await query(
+    `SELECT ride_id FROM rides
+     WHERE organization_id = $1 AND driver_employee_id = $2
+       AND status IN ('OPEN','FULL','DRAFT')
+     LIMIT 1`,
+    [orgId, driverId]
+  )).rows[0];
+  if (existingRide) {
+    throw badRequest('You already have an active ride published. Cancel it before offering a new one.');
+  }
+
+  // ── Guard: driver must not be an active passenger on another ride ──
+  const existingTrip = (await query(
+    `SELECT trip_id FROM trips
+     WHERE organization_id = $1 AND passenger_employee_id = $2
+       AND status IN ('BOOKED','STARTED','IN_PROGRESS')
+     LIMIT 1`,
+    [orgId, driverId]
+  )).rows[0];
+  if (existingTrip) {
+    throw badRequest('You are currently booked as a passenger on another ride. Cancel that booking first.');
+  }
+
   // Vehicle must belong to this driver in this org.
   const vehicle = (await query(
     'SELECT * FROM vehicles WHERE vehicle_id = $1 AND organization_id = $2 AND employee_id = $3 AND is_active = TRUE',
-    [b.vehicleId, req.auth.orgId, req.auth.employeeId]
+    [b.vehicleId, orgId, driverId]
   )).rows[0];
   if (!vehicle) throw badRequest('Select a registered vehicle you own before offering a ride');
-  if (b.totalSeats > vehicle.seating_capacity) {
-    throw badRequest(`Seats offered cannot exceed vehicle capacity (${vehicle.seating_capacity})`);
+  if (parseInt(b.totalSeats, 10) > vehicle.seating_capacity) {
+    throw badRequest(`Seats offered (${b.totalSeats}) cannot exceed vehicle capacity (${vehicle.seating_capacity})`);
   }
 
-  // Compute route (distance/duration/polyline) from OSRM.
-  let distanceKm = null;
-  let durationMinutes = null;
-  let polyline = null;
-  let routeGeometry = null;
+  // Compute route from OSRM.
+  let distanceKm = null, durationMinutes = null, polyline = null, routeGeometry = null;
   try {
     const route = await getRoute(
       { lat: +b.pickupLat, lng: +b.pickupLng },
       { lat: +b.destinationLat, lng: +b.destinationLng }
     );
-    distanceKm = route.distanceKm;
+    distanceKm    = route.distanceKm;
     durationMinutes = route.durationMinutes;
     routeGeometry = route.geometry;
-    polyline = JSON.stringify(route.geometry);
+    polyline      = JSON.stringify(route.geometry);
   } catch {
     distanceKm = haversineKm(
       { lat: +b.pickupLat, lng: +b.pickupLng },
@@ -190,12 +249,11 @@ router.post('/', asyncHandler(async (req, res) => {
     );
   }
 
-  // Auto-calculate fare.
   const settings = (await query(
     'SELECT cost_per_km FROM organization_settings WHERE organization_id = $1',
-    [req.auth.orgId]
+    [orgId]
   )).rows[0];
-  const costPerKm = Number(settings?.cost_per_km ?? 0);
+  const costPerKm  = Number(settings?.cost_per_km ?? 0);
   const farePerSeat = costPerKm > 0 && distanceKm
     ? Math.max(1, +(costPerKm * distanceKm).toFixed(2))
     : 0;
@@ -210,7 +268,7 @@ router.post('/', asyncHandler(async (req, res) => {
        is_recurring, recurrence_pattern, status)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::smallint,$14::smallint,$15,$16,$17,'OPEN')
      RETURNING *`,
-    [req.auth.orgId, req.auth.employeeId, b.vehicleId,
+    [orgId, driverId, b.vehicleId,
      b.pickupAddress, b.pickupLat, b.pickupLng,
      b.destinationAddress, b.destinationLat, b.destinationLng,
      polyline, distanceKm, durationMinutes,
@@ -222,24 +280,15 @@ router.post('/', asyncHandler(async (req, res) => {
   let nodes = [];
   if (routeGeometry) {
     const sampledPoints = sampleRouteNodes(routeGeometry, distanceKm);
-
-    // Insert all nodes; reverse-geocode addresses in the background (non-blocking).
     for (const pt of sampledPoints) {
       const nodeRow = (await query(
         `INSERT INTO ride_pickup_nodes (organization_id, ride_id, node_index, lat, lng)
          VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-        [req.auth.orgId, row.ride_id, pt.nodeIndex, pt.lat, pt.lng]
+        [orgId, row.ride_id, pt.nodeIndex, pt.lat, pt.lng]
       )).rows[0];
       nodes.push(nodeRow);
-
-      // Async reverse geocode — fire & forget, update address when done.
       reverseGeocode(pt.lat, pt.lng).then((addr) => {
-        if (addr) {
-          query(
-            'UPDATE ride_pickup_nodes SET address = $1 WHERE node_id = $2',
-            [addr, nodeRow.node_id]
-          ).catch(() => {}); // best-effort
-        }
+        if (addr) query('UPDATE ride_pickup_nodes SET address=$1 WHERE node_id=$2', [addr, nodeRow.node_id]).catch(() => {});
       }).catch(() => {});
     }
   }
@@ -247,23 +296,56 @@ router.post('/', asyncHandler(async (req, res) => {
   res.status(201).json({ ride: row, nodes });
 }));
 
-/** PATCH /api/rides/:id/cancel — driver cancels an open ride. */
+/**
+ * PATCH /api/rides/:id/cancel — driver cancels an open ride.
+ *
+ * Blocked if ANY trip on this ride is already STARTED or IN_PROGRESS —
+ * once the driver has started the ride, it cannot be cancelled.
+ */
 router.patch('/:id/cancel', asyncHandler(async (req, res) => {
+  const orgId    = req.auth.orgId;
+  const driverId = req.auth.employeeId;
+
+  // Fetch the ride first (without updating) so we can check trip statuses.
+  const rideCheck = (await query(
+    `SELECT ride_id, status FROM rides
+     WHERE ride_id = $1 AND organization_id = $2 AND driver_employee_id = $3`,
+    [req.params.id, orgId, driverId]
+  )).rows[0];
+  if (!rideCheck) throw notFound('Ride not found or you are not the driver');
+  if (!['OPEN','DRAFT','FULL'].includes(rideCheck.status)) {
+    throw badRequest(`Cannot cancel a ride with status '${rideCheck.status}'`);
+  }
+
+  // Block cancellation if any trip is in progress / already started.
+  const activeTrip = (await query(
+    `SELECT trip_id FROM trips
+     WHERE ride_id = $1 AND organization_id = $2
+       AND status IN ('STARTED','IN_PROGRESS')
+     LIMIT 1`,
+    [req.params.id, orgId]
+  )).rows[0];
+  if (activeTrip) {
+    throw badRequest('The ride has already started — you cannot cancel it now.');
+  }
+
   const ride = (await query(
     `UPDATE rides SET status = 'CANCELLED', updated_at = now()
      WHERE ride_id = $1 AND organization_id = $2 AND driver_employee_id = $3
        AND status IN ('OPEN','DRAFT','FULL') RETURNING *`,
-    [req.params.id, req.auth.orgId, req.auth.employeeId]
+    [req.params.id, orgId, driverId]
   )).rows[0];
   if (!ride) throw notFound('Ride not found or cannot be cancelled');
+
   await query(
     `UPDATE ride_bookings SET booking_status='CANCELLED', cancelled_at=now()
      WHERE ride_id=$1 AND organization_id=$2 AND booking_status='CONFIRMED'`,
-    [req.params.id, req.auth.orgId]);
+    [req.params.id, orgId]);
   await query(
     `UPDATE trips SET status='CANCELLED', updated_at=now()
      WHERE ride_id=$1 AND organization_id=$2 AND status IN ('BOOKED','STARTED','IN_PROGRESS')`,
-    [req.params.id, req.auth.orgId]);
+    [req.params.id, orgId]);
+
   res.json({ ride });
 }));
 

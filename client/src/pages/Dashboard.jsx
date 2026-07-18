@@ -17,9 +17,10 @@ function Stat({ label, value }) {
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const [stats, setStats] = useState(null);
+  const [stats, setStats]       = useState(null);
   const [upcoming, setUpcoming] = useState(null);
-  const [places, setPlaces] = useState([]);
+  const [places, setPlaces]     = useState([]);
+  const [rideState, setRideState] = useState(null);
 
   useEffect(() => {
     // Load stats
@@ -36,7 +37,21 @@ export default function Dashboard() {
     api.get('/saved-places')
       .then(({ data }) => setPlaces(data.places.slice(0, 3)))
       .catch(() => setPlaces([]));
+
+    // Load ride state (FREE / RIDING / DRIVING)
+    api.get('/rides/state')
+      .then(({ data }) => setRideState(data))
+      .catch(() => {});
   }, []);
+
+  const rideStatus = rideState?.rideStatus ?? 'FREE';
+  const STATUS_PILL = {
+    FREE:    'bg-emerald-100 text-emerald-700 border-emerald-300 ring-emerald-200',
+    RIDING:  'bg-amber-100 text-amber-700 border-amber-300 ring-amber-200',
+    DRIVING: 'bg-blue-100 text-blue-700 border-blue-300 ring-blue-200',
+  };
+  const STATUS_ICON = { FREE: '🟢', RIDING: '🚌', DRIVING: '🚗' };
+
 
   return (
     <div className="space-y-6">
@@ -52,8 +67,11 @@ export default function Dashboard() {
             <p className="text-sm text-ink-500">Welcome to your enterprise commute portal.</p>
           </div>
         </div>
-        <span className="hidden rounded-xl bg-brand/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-brand-dark ring-1 ring-brand/20 sm:inline-block">
+        <span className="hidden rounded-xl bg-brand/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-brand-dark ring-1 ring-brand/20 sm:inline-flex items-center gap-2">
           {user?.orgName}
+        </span>
+        <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider ring-1 ${STATUS_PILL[rideStatus]}`}>
+          {STATUS_ICON[rideStatus]} {rideStatus}
         </span>
       </div>
 

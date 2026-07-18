@@ -47,7 +47,39 @@ router.post('/', asyncHandler(async (req, res) => {
     if (!ride) throw notFound('Ride not found');
     if (ride.status !== 'OPEN') throw badRequest('This ride is not open for booking');
     if (ride.driver_employee_id === passengerId) throw badRequest('You cannot book your own ride');
-    if (ride.available_seats < seats) throw badRequest('Not enough seats available');
+    if (ride.available_seats < seats) throw badRequest(`Not enough seats available — only ${ride.available_seats} seat(s) left`);
+
+    // ── Guard: passenger must not already be RIDING ────────────────
+    const activeTrip = (await client.query(
+      `SELECT t.trip_id, r.pickup_address, r.destination_address
+       FROM trips t
+       JOIN rides r ON r.ride_id = t.ride_id AND r.organization_id = t.organization_id
+       WHERE t.organization_id = $1 AND t.passenger_employee_id = $2
+         AND t.status IN ('BOOKED','STARTED','IN_PROGRESS')
+       LIMIT 1`,
+      [orgId, passengerId]
+    )).rows[0];
+    if (activeTrip) {
+      throw badRequest(
+        `You are already RIDING (${activeTrip.pickup_address} → ${activeTrip.destination_address}). ` +
+        `Cancel that booking first.`
+      );
+    }
+
+    // ── Guard: passenger must not be DRIVING another active ride ────
+    const drivingRide = (await client.query(
+      `SELECT ride_id, pickup_address, destination_address FROM rides
+       WHERE organization_id = $1 AND driver_employee_id = $2
+         AND status IN ('OPEN','FULL','DRAFT')
+       LIMIT 1`,
+      [orgId, passengerId]
+    )).rows[0];
+    if (drivingRide) {
+      throw badRequest(
+        `You are already DRIVING an active ride (${drivingRide.pickup_address} → ${drivingRide.destination_address}). ` +
+        `Cancel your ride before booking a seat on another.`
+      );
+    }
 
     // Prevent duplicate active booking.
     const dup = (await client.query(

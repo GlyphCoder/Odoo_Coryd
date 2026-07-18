@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Car, CalendarDays, Users, RefreshCw, Navigation, Route, Info } from 'lucide-react';
+import { Car, CalendarDays, Users, RefreshCw, Navigation, Route, Info, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import api, { apiError } from '../api.js';
 import AddressInput from '../components/AddressInput.jsx';
 import MapView from '../components/MapView.jsx';
@@ -38,6 +38,11 @@ export default function OfferRide() {
   const [nodes,  setNodes]  = useState([]);
   const [busy,   setBusy]   = useState(false);
   const [error,  setError]  = useState('');
+  const [rideState, setRideState] = useState(null);
+
+  useEffect(() => {
+    api.get('/rides/state').then(({ data }) => setRideState(data)).catch(() => {});
+  }, []);
 
   useEffect(() => {
     api.get('/vehicles').then(({ data }) => {
@@ -112,14 +117,65 @@ export default function OfferRide() {
     );
   }
 
-  const selected = vehicles.find((v) => v.vehicle_id === form.vehicleId);
+  const selected       = vehicles.find((v) => v.vehicle_id === form.vehicleId);
+  const activeRide     = rideState?.asDriver;
+  const activePassTrip = rideState?.asPassenger;
+  const rideStatus     = rideState?.rideStatus ?? 'FREE';
+  const isBlocked = !!(activeRide || activePassTrip);
+
+  const STATUS_PILL = {
+    FREE:    'bg-emerald-100 text-emerald-700 border-emerald-300 ring-emerald-200',
+    RIDING:  'bg-amber-100 text-amber-700 border-amber-300 ring-amber-200',
+    DRIVING: 'bg-blue-100 text-blue-700 border-blue-300 ring-blue-200',
+  };
+  const STATUS_ICON = { FREE: '🟢', RIDING: '🚌', DRIVING: '🚗' };
 
   return (
     <div className="space-y-5">
-      <PageTitle icon={Car} subtitle="Share your route — fare is calculated automatically.">
-        Offer a Ride
-      </PageTitle>
+      <div className="flex items-center justify-between">
+        <PageTitle icon={Car} subtitle="Share your route — fare is calculated automatically.">
+          Offer a Ride
+        </PageTitle>
+        {rideState && (
+          <span className={`shrink-0 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider ring-1 ${STATUS_PILL[rideStatus]}`}>
+            {STATUS_ICON[rideStatus]} {rideStatus}
+          </span>
+        )}
+      </div>
 
+      {/* Driver already has an active ride */}
+      {activeRide && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3.5 text-sm text-amber-800 dark:border-amber-600/40 dark:bg-amber-900/20 dark:text-amber-300">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold">You already have an active ride published</p>
+            <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-400 truncate">
+              {activeRide.pickup_address} → {activeRide.destination_address}
+            </p>
+            <p className="mt-1 text-xs">Cancel or complete your existing ride before publishing a new one.</p>
+          </div>
+          <Link to="/app/trips?role=driver" className="shrink-0">
+            <Button variant="outline" size="sm">View my rides</Button>
+          </Link>
+        </div>
+      )}
+
+      {/* Driver is an active passenger on another ride */}
+      {activePassTrip && !activeRide && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3.5 text-sm text-amber-800 dark:border-amber-600/40 dark:bg-amber-900/20 dark:text-amber-300">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold">You are currently booked as a passenger</p>
+            <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-400 truncate">
+              {activePassTrip.pickup_address} → {activePassTrip.destination_address}
+            </p>
+            <p className="mt-1 text-xs">Cancel that booking before publishing a ride.</p>
+          </div>
+          <Link to={`/app/trips/${activePassTrip.trip_id}`} className="shrink-0">
+            <Button variant="outline" size="sm">View trip</Button>
+          </Link>
+        </div>
+      )}
       <Card className="divide-y divide-white/60">
 
         {/* Vehicle */}
@@ -225,7 +281,7 @@ export default function OfferRide() {
           <Button variant="outline" onClick={confirmRoute} disabled={busy || !pickup || !dest}>
             <Route className="h-4 w-4" /> Confirm route
           </Button>
-          <Button onClick={publish} disabled={busy}>
+          <Button onClick={publish} disabled={busy || isBlocked} title={isBlocked ? 'You have an active ride — cancel it first' : ''}>
             {busy ? 'Publishing…' : 'Publish ride'}
           </Button>
         </div>

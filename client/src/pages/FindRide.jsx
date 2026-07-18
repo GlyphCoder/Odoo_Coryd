@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Map, Search, ClipboardList, MapPin, ArrowRight, Navigation, Armchair, CalendarClock } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
+import { Map, Search, ClipboardList, MapPin, ArrowRight, Navigation, Armchair, CalendarClock, AlertTriangle } from 'lucide-react';
 import api, { apiError } from '../api.js';
 import AddressInput from '../components/AddressInput.jsx';
 import MapView from '../components/MapView.jsx';
@@ -33,6 +33,15 @@ export default function FindRide() {
   // For map preview: which ride is hovered and its nodes
   const [previewRide, setPreviewRide] = useState(null);
   const [previewNodes, setPreviewNodes] = useState([]);
+
+  // Current ride state for this user
+  const [rideState, setRideState] = useState(null);
+  const [cancelBusy, setCancelBusy] = useState(false);
+
+  // Fetch user state on mount
+  useEffect(() => {
+    api.get('/rides/state').then(({ data }) => setRideState(data)).catch(() => {});
+  }, []);
 
   /* Watch user's live GPS position */
   useEffect(() => {
@@ -136,13 +145,81 @@ export default function FindRide() {
     } catch { setPreviewNodes([]); }
   };
 
-  const canSearch = (pickup || pickupText.length >= 3) && (dest || destText.length >= 3);
+  const rideStatus   = rideState?.rideStatus ?? 'FREE';
+  const activeTrip   = rideState?.asPassenger;
+  const activeRide   = rideState?.asDriver;
+  const isBlocked    = rideStatus !== 'FREE';
+  const canSearch    = !isBlocked && (pickup || pickupText.length >= 3) && (dest || destText.length >= 3);
+
+  /* Cancel own booking (passenger) */
+  const cancelMyBooking = async () => {
+    if (!activeTrip?.booking_id) return;
+    setCancelBusy(true);
+    try {
+      await api.patch(`/bookings/${activeTrip.booking_id}/cancel`);
+      setRideState((s) => ({ ...s, rideStatus: 'FREE', asPassenger: null }));
+    } catch (e) { setError(apiError(e)); }
+    finally { setCancelBusy(false); }
+  };
+
+  /* Status pill styles */
+  const STATUS_STYLES = {
+    FREE:    'bg-emerald-100 text-emerald-700 border-emerald-300',
+    RIDING:  'bg-amber-100 text-amber-700 border-amber-300',
+    DRIVING: 'bg-blue-100 text-blue-700 border-blue-300',
+  };
 
   return (
     <div className="space-y-5">
-      <PageTitle icon={Search} subtitle="Search rides published by colleagues on your route.">
-        Find a Ride
-      </PageTitle>
+      <div className="flex items-center justify-between">
+        <PageTitle icon={Search} subtitle="Search rides published by colleagues on your route.">
+          Find a Ride
+        </PageTitle>
+        {rideState && (
+          <span className={`shrink-0 rounded-full border px-3 py-1 text-xs font-bold tracking-wide ${STATUS_STYLES[rideStatus]}`}>
+            {rideStatus}
+          </span>
+        )}
+      </div>
+
+      {/* RIDING — already booked as passenger */}
+      {rideStatus === 'RIDING' && activeTrip && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3.5 text-sm text-amber-800 dark:border-amber-600/40 dark:bg-amber-900/20 dark:text-amber-300">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold">Status: RIDING — you are booked on an active ride</p>
+            <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-400 truncate">
+              {activeTrip.pickup_address} → {activeTrip.destination_address}
+            </p>
+            <p className="mt-1 text-xs">Cancel your booking to search for a different ride.</p>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <Link to={`/app/trips/${activeTrip.trip_id}`}>
+              <Button variant="outline" size="sm">View trip</Button>
+            </Link>
+            <Button size="sm" variant="danger" onClick={cancelMyBooking} disabled={cancelBusy || activeTrip.status !== 'BOOKED'}>
+              {cancelBusy ? 'Cancelling…' : 'Cancel booking'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* DRIVING — user has an active ride as driver */}
+      {rideStatus === 'DRIVING' && activeRide && (
+        <div className="flex items-start gap-3 rounded-xl border border-blue-300 bg-blue-50 px-4 py-3.5 text-sm text-blue-800 dark:border-blue-600/40 dark:bg-blue-900/20 dark:text-blue-300">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-blue-400" />
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold">Status: DRIVING — you have an active ride published</p>
+            <p className="mt-0.5 text-xs text-blue-600 dark:text-blue-400 truncate">
+              {activeRide.pickup_address} → {activeRide.destination_address}
+            </p>
+            <p className="mt-1 text-xs">Cancel your ride before booking a seat on another.</p>
+          </div>
+          <Link to="/app/trips?role=driver" className="shrink-0">
+            <Button variant="outline" size="sm">View my ride</Button>
+          </Link>
+        </div>
+      )}
 
       <Card className="space-y-4 p-5">
         <AddressInput

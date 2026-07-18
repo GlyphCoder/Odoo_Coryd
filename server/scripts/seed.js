@@ -20,9 +20,15 @@ const DEMO = {
   adminEmail: 'admin@acme.com',
   adminPass: 'admin123',
   employees: [
-    { email: 'ravi@acme.com', name: 'Ravi Kumar', pass: 'password123', dept: 'Engineering', desig: 'SDE II' },
-    { email: 'priya@acme.com', name: 'Priya Sharma', pass: 'password123', dept: 'Design', desig: 'Product Designer' },
-    { email: 'arjun@acme.com', name: 'Arjun Mehta', pass: 'password123', dept: 'Sales', desig: 'AE' },
+    { email: 'ravi@acme.com',    name: 'Ravi Kumar',      pass: 'password123', dept: 'Engineering', desig: 'SDE II' },
+    { email: 'priya@acme.com',   name: 'Priya Sharma',    pass: 'password123', dept: 'Design',      desig: 'Product Designer' },
+    { email: 'arjun@acme.com',   name: 'Arjun Mehta',     pass: 'password123', dept: 'Sales',       desig: 'AE' },
+    // Capacity-test users — driver + passengers to verify seat limits
+    { email: 'cap.driver@acme.com',  name: 'Capacity Driver',    pass: 'password123', dept: 'Engineering', desig: 'Lead',       employeeCode: 'CAPD001' },
+    { email: 'cap.rider1@acme.com',  name: 'Cap Rider One',      pass: 'password123', dept: 'Engineering', desig: 'Engineer',   employeeCode: 'CAPR001' },
+    { email: 'cap.rider2@acme.com',  name: 'Cap Rider Two',      pass: 'password123', dept: 'Design',      desig: 'Associate',  employeeCode: 'CAPR002' },
+    { email: 'cap.rider3@acme.com',  name: 'Cap Rider Three',    pass: 'password123', dept: 'Sales',       desig: 'Analyst',    employeeCode: 'CAPR003' },
+    { email: 'cap.rider4@acme.com',  name: 'Cap Rider Four',     pass: 'password123', dept: 'Marketing',   desig: 'Specialist', employeeCode: 'CAPR004' },
   ],
 };
 
@@ -164,6 +170,33 @@ async function main() {
          'Whitefield, Bengaluru',12.969800,77.749900,18.50,55,$4,3,3,80.00,'OPEN')`,
       [orgId, empIds[0], primaryVehicle.vehicle_id, tomorrow.toISOString()]
     );
+
+    // ── Capacity-test ride (2 seats only, cap.driver) ──────────────
+    // cap.driver is empIds[3] (index 3 = 4th employee after admin-implicit shift)
+    // The named employees are inserted first, so:
+    //   empIds[0]=ravi, [1]=priya, [2]=arjun, [3]=cap.driver, [4]=cap.rider1…
+    const capDriverIdx = DEMO.employees.findIndex((e) => e.email === 'cap.driver@acme.com');
+    if (capDriverIdx >= 0) {
+      const capDriverId = empIds[capDriverIdx];
+      const capVehicle = (await c.query(
+        `INSERT INTO vehicles (organization_id, employee_id, vehicle_model, registration_number, seating_capacity, fuel_type, is_verified)
+         VALUES ($1,$2,'Tata Nano','KA09CAP002',2,'PETROL',TRUE)
+         RETURNING *`,
+        [orgId, capDriverId]
+      )).rows[0];
+      await c.query(
+        `INSERT INTO rides (organization_id, driver_employee_id, vehicle_id,
+           pickup_address, pickup_lat, pickup_lng,
+           destination_address, destination_lat, destination_lng,
+           distance_km, duration_minutes, departure_datetime, total_seats, available_seats, fare_per_seat, status)
+         VALUES ($1,$2,$3,
+           'HSR Layout, Bengaluru',12.911600,77.638900,
+           'MG Road, Bengaluru',12.975600,77.606800,
+           11.60,36,$4,2,2,50.00,'OPEN')`,
+        [orgId, capDriverId, capVehicle.vehicle_id, dateFromToday(1, 8).toISOString()]
+      );
+    }
+
 
     const bulkVehicles = [];
     const vehicleLimit = Math.min(BULK_VEHICLE_COUNT, Math.max(0, empIds.length - 1));
