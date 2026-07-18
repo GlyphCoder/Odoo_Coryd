@@ -24,6 +24,11 @@ function Protected({ children, adminOnly }) {
   return children;
 }
 
+function AppHome() {
+  const { user } = useAuth();
+  return user?.isAdmin ? <AdminDashboard /> : <Dashboard />;
+}
+
 export default function App() {
   const { user, loading } = useAuth();
 
@@ -34,7 +39,7 @@ export default function App() {
       <Route path="/signup" element={<Signup />} />
 
       <Route path="/app" element={<Protected><Layout /></Protected>}>
-        <Route index element={<Dashboard />} />
+        <Route index element={<AppHome />} />
         <Route path="find" element={<FindRide />} />
         <Route path="offer" element={<OfferRide />} />
         <Route path="vehicles" element={<Vehicles />} />

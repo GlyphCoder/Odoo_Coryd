@@ -60,11 +60,16 @@ function Overview() {
       <Card className="p-5">
         <h2 className="mb-4 font-semibold text-slate-700">Monthly distance</h2>
         {monthly.length === 0 ? <Empty title="No data yet" /> : (
-          <div className="flex items-end gap-3" style={{ height: 160 }}>
+          <div className="flex min-h-48 items-end gap-4 overflow-x-auto border-b border-slate-200 pb-3">
             {monthly.map((m) => (
-              <div key={m.month} className="flex flex-1 flex-col items-center justify-end gap-1">
-                <div className="w-full rounded-t bg-brand" style={{ height: `${(Number(m.distance) / maxDist) * 130}px` }} title={`${m.distance} km`} />
-                <div className="text-[10px] text-slate-400">{m.month.slice(2)}</div>
+              <div key={m.month} className="flex w-20 shrink-0 flex-col items-center justify-end gap-2">
+                <div className="text-xs font-semibold text-slate-600">{Number(m.distance).toFixed(0)} km</div>
+                <div
+                  className="w-10 rounded-t-lg bg-brand shadow-sm"
+                  style={{ height: `${Math.max(18, (Number(m.distance) / maxDist) * 120)}px` }}
+                  title={`${Number(m.distance).toFixed(1)} km across ${m.trips} trips`}
+                />
+                <div className="text-[11px] font-medium text-slate-400">{m.month.slice(2)}</div>
               </div>
             ))}
           </div>
