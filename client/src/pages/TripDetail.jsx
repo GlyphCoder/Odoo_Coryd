@@ -310,6 +310,7 @@ export default function TripDetail() {
             <MapView
               pickup={{ lat: +trip.pickup_lat, lng: +trip.pickup_lng, address: trip.pickup_address }}
               destination={{ lat: +trip.destination_lat, lng: +trip.destination_lng, address: trip.destination_address }}
+              riderPickup={trip.pickup_node_lat ? { lat: +trip.pickup_node_lat, lng: +trip.pickup_node_lng } : null}
               routeGeometry={trip.route_polyline}
               vehicle={isLive ? vehiclePos : null}
               myLocation={!iAmDriver ? myLocation : null}

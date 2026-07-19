@@ -14,7 +14,8 @@ const TRIP_JOIN = `
          du.full_name AS driver_name, du.phone_number AS driver_phone,
          pu.full_name AS passenger_name, pu.phone_number AS passenger_phone,
          v.vehicle_model, v.registration_number,
-         bk.seats_booked, bk.fare_amount
+         bk.seats_booked, bk.fare_amount,
+         pn.lat AS pickup_node_lat, pn.lng AS pickup_node_lng, pn.address AS pickup_node_address
   FROM trips t
   JOIN rides r      ON r.ride_id = t.ride_id AND r.organization_id = t.organization_id
   JOIN vehicles v   ON v.vehicle_id = r.vehicle_id AND v.organization_id = r.organization_id
@@ -23,6 +24,7 @@ const TRIP_JOIN = `
   JOIN employees pe ON pe.employee_id = t.passenger_employee_id AND pe.organization_id = t.organization_id
   JOIN users pu     ON pu.user_id = pe.user_id
   LEFT JOIN ride_bookings bk ON bk.booking_id = t.booking_id AND bk.organization_id = t.organization_id
+  LEFT JOIN ride_pickup_nodes pn ON pn.node_id = bk.pickup_node_id
 `;
 
 function isParticipant(trip, employeeId) {

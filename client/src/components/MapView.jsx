@@ -145,6 +145,7 @@ export default function MapView({
   liveTrip = false,
   pickupNodes = [],
   selectedNodeId = null,
+  riderPickup = null,
 }) {
   const center = pickup || destination || myLocation || { lat: 12.9716, lng: 77.5946 };
 
@@ -173,6 +174,19 @@ export default function MapView({
       ahead:     routeLine.slice(splitIdx),
     };
   }, [routeLine, vehicle, liveTrip]);
+
+  /* Calculate the Rider's segment if a pickup is provided */
+  const riderSegment = useMemo(() => {
+    if (!routeLine || !riderPickup) return null;
+    let minDist = Infinity;
+    let splitIdx = 0;
+    routeLine.forEach(([rlat, rlng], i) => {
+      const d = Math.hypot(rlat - riderPickup.lat, rlng - riderPickup.lng);
+      if (d < minDist) { minDist = d; splitIdx = i; }
+    });
+    // Rider segment is from their pickup point to the end of the driver's route
+    return routeLine.slice(splitIdx);
+  }, [routeLine, riderPickup]);
 
   return (
     <MapContainer
@@ -210,7 +224,7 @@ export default function MapView({
           {ahead && ahead.length >= 2 && (
             <Polyline
               positions={ahead}
-              pathOptions={{ color: '#7c3aed', weight: 5, opacity: 0.85 }}
+              pathOptions={{ color: '#3b82f6', weight: 5, opacity: 0.85 }}
             />
           )}
         </>
@@ -218,9 +232,17 @@ export default function MapView({
         routeLine && routeLine.length >= 2 && (
           <Polyline
             positions={routeLine}
-            pathOptions={{ color: '#7c3aed', weight: 5, opacity: 0.78, lineJoin: 'round', lineCap: 'round' }}
+            pathOptions={{ color: '#3b82f6', weight: 5, opacity: 0.78, lineJoin: 'round', lineCap: 'round' }}
           />
         )
+      )}
+
+      {/* Rider's specific segment (Dotted overlay) */}
+      {riderSegment && riderSegment.length >= 2 && (
+        <Polyline
+          positions={riderSegment}
+          pathOptions={{ color: '#0ea5e9', weight: 5, opacity: 1, dashArray: '8 8', lineJoin: 'round', lineCap: 'round' }}
+        />
       )}
 
       {/* Pickup nodes — shared stops along driver route */}
@@ -265,9 +287,25 @@ export default function MapView({
       {/* Map auto-behaviors */}
       {follow && vehicle && <Recenter point={vehicle} />}
       {!vehicle && <FitBounds points={[
-        pickup, destination, myLocation,
+        pickup, destination, myLocation, riderPickup,
         ...(pickupNodes.map((n) => ({ lat: +n.lat, lng: +n.lng })))
       ].filter(Boolean)} />}
+
+      {/* Map Legend */}
+      <div className="leaflet-bottom leaflet-right">
+        <div className="leaflet-control leaflet-bar" style={{ backgroundColor: 'white', padding: '10px', margin: '12px', fontSize: '13px', border: '1px solid #e2e8f0', borderRadius: '10px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '6px' }}>
+            <div style={{ width: '24px', height: '5px', backgroundColor: '#3b82f6', marginRight: '8px', borderRadius: '2px' }} />
+            <span style={{ fontWeight: 600, color: '#334155' }}>Driver Route</span>
+          </div>
+          {riderPickup && (
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <div style={{ width: '24px', height: '0px', borderTop: '5px dashed #0ea5e9', marginRight: '8px' }} />
+              <span style={{ fontWeight: 600, color: '#334155' }}>Your Segment</span>
+            </div>
+          )}
+        </div>
+      </div>
     </MapContainer>
   );
 }
