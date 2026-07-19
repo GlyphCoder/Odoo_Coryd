@@ -175,20 +175,15 @@ export default function MapView({
     };
   }, [routeLine, vehicle, liveTrip]);
 
-  /* Calculate the Rider's segment if a pickup is provided */
+  /* Calculate the Rider's segment: From their live GPS to the pickup point */
   const riderSegment = useMemo(() => {
-    console.log('[DEBUG] MapView riderSegment recalc. routeLine:', !!routeLine, 'riderPickup:', riderPickup);
-    if (!routeLine || !riderPickup) return null;
-    let minDist = Infinity;
-    let splitIdx = 0;
-    routeLine.forEach(([rlat, rlng], i) => {
-      const d = Math.hypot(rlat - riderPickup.lat, rlng - riderPickup.lng);
-      if (d < minDist) { minDist = d; splitIdx = i; }
-    });
-    console.log('[DEBUG] MapView riderSegment splitIdx:', splitIdx, 'of', routeLine.length);
-    // Rider segment is from their pickup point to the end of the driver's route
-    return routeLine.slice(splitIdx);
-  }, [routeLine, riderPickup]);
+    console.log('[DEBUG] MapView riderSegment recalc. myLocation:', myLocation, 'riderPickup:', riderPickup);
+    if (!myLocation || !riderPickup) return null;
+    return [
+      [myLocation.lat, myLocation.lng],
+      [riderPickup.lat, riderPickup.lng]
+    ];
+  }, [myLocation, riderPickup]);
 
   return (
     <MapContainer
@@ -300,10 +295,10 @@ export default function MapView({
             <div style={{ width: '24px', height: '5px', backgroundColor: '#3b82f6', marginRight: '8px', borderRadius: '2px' }} />
             <span style={{ fontWeight: 600, color: '#334155' }}>Driver Route</span>
           </div>
-          {riderPickup && (
+          {riderPickup && myLocation && (
             <div style={{ display: 'flex', alignItems: 'center' }}>
               <div style={{ width: '24px', height: '0px', borderTop: '5px dotted #f59e0b', marginRight: '8px' }} />
-              <span style={{ fontWeight: 600, color: '#334155' }}>Your Segment</span>
+              <span style={{ fontWeight: 600, color: '#334155' }}>Walk to Pickup</span>
             </div>
           )}
         </div>
