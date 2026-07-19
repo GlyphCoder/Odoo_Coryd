@@ -279,6 +279,7 @@ export default function TripDetail() {
 
   return (
     <div className="space-y-5">
+      {console.log('[DEBUG] TripDetail render trip:', trip)}
       <div className="flex items-center justify-between">
         <Link
           to="/app/trips"
@@ -307,6 +308,7 @@ export default function TripDetail() {
               </div>
               <span className="text-xs font-medium text-ink-500">{trackingLabel}</span>
             </div>
+            {console.log('[DEBUG] Passing riderPickup:', trip.pickup_node_lat ? { lat: +trip.pickup_node_lat, lng: +trip.pickup_node_lng } : null)}
             <MapView
               pickup={{ lat: +trip.pickup_lat, lng: +trip.pickup_lng, address: trip.pickup_address }}
               destination={{ lat: +trip.destination_lat, lng: +trip.destination_lng, address: trip.destination_address }}

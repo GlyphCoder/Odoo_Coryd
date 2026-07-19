@@ -177,6 +177,7 @@ export default function MapView({
 
   /* Calculate the Rider's segment if a pickup is provided */
   const riderSegment = useMemo(() => {
+    console.log('[DEBUG] MapView riderSegment recalc. routeLine:', !!routeLine, 'riderPickup:', riderPickup);
     if (!routeLine || !riderPickup) return null;
     let minDist = Infinity;
     let splitIdx = 0;
@@ -184,6 +185,7 @@ export default function MapView({
       const d = Math.hypot(rlat - riderPickup.lat, rlng - riderPickup.lng);
       if (d < minDist) { minDist = d; splitIdx = i; }
     });
+    console.log('[DEBUG] MapView riderSegment splitIdx:', splitIdx, 'of', routeLine.length);
     // Rider segment is from their pickup point to the end of the driver's route
     return routeLine.slice(splitIdx);
   }, [routeLine, riderPickup]);
@@ -224,7 +226,7 @@ export default function MapView({
           {ahead && ahead.length >= 2 && (
             <Polyline
               positions={ahead}
-              pathOptions={{ color: '#3b82f6', weight: 5, opacity: 0.85 }}
+              pathOptions={{ color: '#3b82f6', weight: 4, opacity: 0.85 }}
             />
           )}
         </>
@@ -232,7 +234,7 @@ export default function MapView({
         routeLine && routeLine.length >= 2 && (
           <Polyline
             positions={routeLine}
-            pathOptions={{ color: '#3b82f6', weight: 5, opacity: 0.78, lineJoin: 'round', lineCap: 'round' }}
+            pathOptions={{ color: '#3b82f6', weight: 4, opacity: 0.78, lineJoin: 'round', lineCap: 'round' }}
           />
         )
       )}
@@ -241,7 +243,7 @@ export default function MapView({
       {riderSegment && riderSegment.length >= 2 && (
         <Polyline
           positions={riderSegment}
-          pathOptions={{ color: '#0ea5e9', weight: 5, opacity: 1, dashArray: '8 8', lineJoin: 'round', lineCap: 'round' }}
+          pathOptions={{ color: '#f59e0b', weight: 6, opacity: 1, dashArray: '1, 10', lineJoin: 'round', lineCap: 'round' }}
         />
       )}
 
@@ -300,7 +302,7 @@ export default function MapView({
           </div>
           {riderPickup && (
             <div style={{ display: 'flex', alignItems: 'center' }}>
-              <div style={{ width: '24px', height: '0px', borderTop: '5px dashed #0ea5e9', marginRight: '8px' }} />
+              <div style={{ width: '24px', height: '0px', borderTop: '5px dotted #f59e0b', marginRight: '8px' }} />
               <span style={{ fontWeight: 600, color: '#334155' }}>Your Segment</span>
             </div>
           )}
