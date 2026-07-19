@@ -32,7 +32,7 @@ function Protected({ children, adminOnly }) {
 
 function AppHome() {
   const { user } = useAuth();
-  return user?.isAdmin ? <AdminDashboard /> : <Dashboard />;
+  return user?.isAdmin ? <Navigate to="/app/admin/overview" replace /> : <Dashboard />;
 }
 
 function Landing() {
@@ -63,7 +63,7 @@ export default function App() {
         <Route path="wallet" element={<Wallet />} />
         <Route path="history" element={<RideHistory />} />
         <Route path="places" element={<SavedPlaces />} />
-        <Route path="admin" element={<Protected adminOnly><AdminDashboard /></Protected>} />
+        <Route path="admin/*" element={<Protected adminOnly><AdminDashboard /></Protected>} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

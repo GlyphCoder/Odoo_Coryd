@@ -1,66 +1,95 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import api from '../api.js';
 import { Button } from './ui.jsx';
 
-/**
- * RazorpayButton — loads the Razorpay checkout script once,
- * creates an order server-side, then opens the Razorpay popup.
- *
- * Props:
- *  tripId      string   — the trip to pay for
- *  amount      number   — display amount in ₹ (for the button label)
- *  onSuccess   fn(payment) — called after server verifies the payment
- *  onError     fn(msg)     — called on any failure
- *  disabled    bool
- */
-export default function RazorpayButton({ tripId, amount, onSuccess, onError, disabled }) {
-  const [loading, setLoading]   = useState(false);
-  const [rzpReady, setRzpReady] = useState(false);
-  const scriptRef = useRef(null);
+/* ── Module-level script state so we only inject it once per page ── */
+let scriptLoaded  = !!window.Razorpay;   // already on page (e.g. HMR)
+let scriptLoading = false;
+const scriptCallbacks = [];              // queue of (resolve, reject) waiting
 
-  /* Load Razorpay checkout script once */
+function loadRazorpayScript() {
+  if (scriptLoaded) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    scriptCallbacks.push({ resolve, reject });
+    if (scriptLoading) return;          // already loading — just queue
+    scriptLoading = true;
+    const s = document.createElement('script');
+    s.src   = 'https://checkout.razorpay.com/v1/checkout.js';
+    s.async = true;
+    s.onload = () => {
+      scriptLoaded = true;
+      scriptLoading = false;
+      scriptCallbacks.splice(0).forEach(({ resolve }) => resolve());
+    };
+    s.onerror = () => {
+      scriptLoading = false;
+      scriptCallbacks.splice(0).forEach(({ reject }) => reject(new Error('Could not load Razorpay checkout.')));
+    };
+    document.head.appendChild(s);
+  });
+}
+
+/**
+ * useRazorpay — loads the checkout script and returns a trigger function.
+ */
+export function useRazorpay({ tripId, onSuccess, onError }) {
+  const [loading, setLoading] = useState(false);
+  const [ready,   setReady]   = useState(scriptLoaded);
+
+  /* Stable refs so the open() callback never becomes stale */
+  const tripIdRef    = useRef(tripId);
+  const onSuccessRef = useRef(onSuccess);
+  const onErrorRef   = useRef(onError);
+  useEffect(() => { tripIdRef.current    = tripId;    }, [tripId]);
+  useEffect(() => { onSuccessRef.current = onSuccess; }, [onSuccess]);
+  useEffect(() => { onErrorRef.current   = onError;   }, [onError]);
+
+  /* Load/detect script */
   useEffect(() => {
-    if (window.Razorpay) { setRzpReady(true); return; }
-    const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    script.async = true;
-    script.onload  = () => setRzpReady(true);
-    script.onerror = () => onError?.('Could not load Razorpay checkout.');
-    document.head.appendChild(script);
-    scriptRef.current = script;
-    return () => { /* keep script — reused across re-renders */ };
+    if (scriptLoaded) { setReady(true); return; }
+    loadRazorpayScript()
+      .then(() => setReady(true))
+      .catch((e) => onErrorRef.current?.(e.message));
   }, []);
 
-  const handlePay = async () => {
-    if (!rzpReady) return onError?.('Razorpay checkout not ready. Please refresh.');
+  const open = useCallback(async () => {
+    if (!ready) return onErrorRef.current?.('Razorpay checkout not ready. Please refresh.');
     setLoading(true);
     try {
-      /* Step 1: Create Razorpay Order on server */
-      const { data: orderData } = await api.post('/payments/razorpay/order', { tripId });
+      const { data: orderData } = await api.post('/payments/razorpay/order', {
+        tripId: tripIdRef.current,
+      });
 
-      /* Step 2: Open Razorpay popup */
       await new Promise((resolve, reject) => {
+        let settled = false;         // guard against ondismiss firing after handler
+
         const options = {
           key:         orderData.keyId,
-          amount:      orderData.amount,      // paise
+          amount:      orderData.amount,
           currency:    orderData.currency || 'INR',
           name:        'CoRYD',
           description: 'Ride payment',
           order_id:    orderData.orderId,
           theme:       { color: '#7c3aed' },
+          prefill:     {},
           modal: {
-            ondismiss: () => reject(new Error('Payment cancelled by user')),
+            ondismiss: () => {
+              if (!settled) {
+                settled = true;
+                reject(new Error('Payment cancelled by user'));
+              }
+            },
           },
           handler: async (response) => {
+            settled = true;          // prevent ondismiss from also rejecting
             try {
-              /* Step 3: Verify signature on server */
-              const { data: verifyData } = await api.post('/payments/razorpay/verify', {
+              const { data: v } = await api.post('/payments/razorpay/verify', {
                 razorpay_order_id:   response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_signature:  response.razorpay_signature,
-                tripId,
+                tripId:              tripIdRef.current,
               });
-              resolve(verifyData.payment);
+              resolve(v.payment);
             } catch (e) {
               reject(new Error(e?.response?.data?.error || 'Payment verification failed'));
             }
@@ -69,27 +98,36 @@ export default function RazorpayButton({ tripId, amount, onSuccess, onError, dis
 
         const rzp = new window.Razorpay(options);
         rzp.on('payment.failed', (resp) => {
-          reject(new Error(resp.error?.description || 'Payment failed'));
+          if (!settled) {
+            settled = true;
+            reject(new Error(resp.error?.description || 'Payment failed'));
+          }
         });
         rzp.open();
-      }).then((payment) => {
-        onSuccess?.(payment);
-      });
+      }).then((payment) => onSuccessRef.current?.(payment));
 
     } catch (e) {
-      // "Payment cancelled by user" is not an error — just log silently
       if (e.message !== 'Payment cancelled by user') {
-        onError?.(e.message || 'Payment failed. Please try again.');
+        onErrorRef.current?.(e.message || 'Payment failed. Please try again.');
       }
     } finally {
       setLoading(false);
     }
-  };
+  }, [ready]);
+
+  return { open, loading, ready };
+}
+
+/**
+ * RazorpayButton — standalone button, uses the hook above.
+ */
+export default function RazorpayButton({ tripId, amount, onSuccess, onError, disabled }) {
+  const { open, loading, ready } = useRazorpay({ tripId, onSuccess, onError });
 
   return (
     <Button
-      onClick={handlePay}
-      disabled={disabled || loading || !rzpReady}
+      onClick={open}
+      disabled={disabled || loading || !ready}
       className="flex items-center gap-2"
     >
       {loading ? (

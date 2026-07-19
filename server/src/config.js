@@ -22,6 +22,12 @@ const config = {
     keyId: process.env.RAZORPAY_KEY_ID || '',
     keySecret: process.env.RAZORPAY_KEY_SECRET || '',
   },
+  supabase: {
+    url:            process.env.SUPABASE_URL || '',
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+    storageBucket:  process.env.SUPABASE_STORAGE_BUCKET || 'vehicle-docs',
+  },
 };
+
 
 export default config;

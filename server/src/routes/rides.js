@@ -254,9 +254,13 @@ router.post('/', asyncHandler(async (req, res) => {
     [orgId]
   )).rows[0];
   const costPerKm  = Number(settings?.cost_per_km ?? 0);
-  const farePerSeat = costPerKm > 0 && distanceKm
+  const autoCostPerSeat = costPerKm > 0 && distanceKm
     ? Math.max(1, +(costPerKm * distanceKm).toFixed(2))
     : 0;
+
+  // Driver can set their own fare; if provided and positive, use it. Otherwise fall back to auto.
+  const driverFare = b.farePerSeat != null ? parseFloat(b.farePerSeat) : NaN;
+  const farePerSeat = !isNaN(driverFare) && driverFare >= 0 ? driverFare : autoCostPerSeat;
 
   const row = (await query(
     `INSERT INTO rides (

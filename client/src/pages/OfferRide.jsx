@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Car, CalendarDays, Users, RefreshCw, Navigation, Route, Info, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Car, CalendarDays, Users, RefreshCw, Navigation, Route, Info, AlertTriangle, CheckCircle2, Wallet, IndianRupee } from 'lucide-react';
 import api, { apiError } from '../api.js';
 import AddressInput from '../components/AddressInput.jsx';
 import MapView from '../components/MapView.jsx';
@@ -30,6 +30,7 @@ export default function OfferRide() {
   const [vehicles, setVehicles] = useState(null);
   const [form, setForm] = useState({
     vehicleId: '', date: '', time: '', totalSeats: 1,
+    farePerSeat: '',
     isRecurring: false, selectedDays: [],
   });
   const [pickup, setPickup] = useState(null);
@@ -80,6 +81,7 @@ export default function OfferRide() {
         destinationAddress: dest.address, destinationLat: dest.lat, destinationLng: dest.lng,
         departureDatetime: departure,
         totalSeats: +form.totalSeats,
+        farePerSeat: form.farePerSeat !== '' ? +form.farePerSeat : undefined,
         isRecurring: form.isRecurring,
         recurrencePattern: form.isRecurring ? { days: form.selectedDays } : null,
       });
@@ -145,34 +147,34 @@ export default function OfferRide() {
 
       {/* Driver already has an active ride */}
       {activeRide && (
-        <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3.5 text-sm text-amber-800 dark:border-amber-600/40 dark:bg-amber-900/20 dark:text-amber-300">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+        <div className="flex items-start gap-3 rounded-xl border border-amber-400 bg-amber-500 px-4 py-3.5 text-sm text-white shadow-lg">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-white" />
           <div className="flex-1 min-w-0">
-            <p className="font-semibold">You already have an active ride published</p>
-            <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-400 truncate">
+            <p className="font-bold">You already have an active ride published</p>
+            <p className="mt-0.5 text-xs text-amber-100 truncate">
               {activeRide.pickup_address} → {activeRide.destination_address}
             </p>
-            <p className="mt-1 text-xs">Cancel or complete your existing ride before publishing a new one.</p>
+            <p className="mt-1 text-xs text-amber-100">Cancel or complete your existing ride before publishing a new one.</p>
           </div>
           <Link to="/app/trips?role=driver" className="shrink-0">
-            <Button variant="outline" size="sm">View my rides</Button>
+            <Button variant="outline" size="sm" className="border-white/50 text-white hover:bg-white/20">View my rides</Button>
           </Link>
         </div>
       )}
 
       {/* Driver is an active passenger on another ride */}
       {activePassTrip && !activeRide && (
-        <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3.5 text-sm text-amber-800 dark:border-amber-600/40 dark:bg-amber-900/20 dark:text-amber-300">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+        <div className="flex items-start gap-3 rounded-xl border border-amber-400 bg-amber-500 px-4 py-3.5 text-sm text-white shadow-lg">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-white" />
           <div className="flex-1 min-w-0">
-            <p className="font-semibold">You are currently booked as a passenger</p>
-            <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-400 truncate">
+            <p className="font-bold">You are currently booked as a passenger</p>
+            <p className="mt-0.5 text-xs text-amber-100 truncate">
               {activePassTrip.pickup_address} → {activePassTrip.destination_address}
             </p>
-            <p className="mt-1 text-xs">Cancel that booking before publishing a ride.</p>
+            <p className="mt-1 text-xs text-amber-100">Cancel that booking before publishing a ride.</p>
           </div>
           <Link to={`/app/trips/${activePassTrip.trip_id}`} className="shrink-0">
-            <Button variant="outline" size="sm">View trip</Button>
+            <Button variant="outline" size="sm" className="border-white/50 text-white hover:bg-white/20">View trip</Button>
           </Link>
         </div>
       )}
@@ -269,10 +271,35 @@ export default function OfferRide() {
           )}
         </div>
 
-        {/* Fare info */}
-        <div className="flex items-start gap-3 bg-brand/[0.08] px-5 py-3.5 text-sm font-medium text-brand-dark">
-          <Info className="mt-0.5 h-4 w-4 shrink-0 text-brand" strokeWidth={1.9} />
-          <span>Fare per seat is calculated automatically from the admin-set rate × your route distance.</span>
+        {/* Fare */}
+        <div className="space-y-3 p-5">
+          <SectionLabel icon={IndianRupee} label="Fare per seat" />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-brand">₹</span>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                placeholder="e.g. 50"
+                value={form.farePerSeat}
+                onChange={set('farePerSeat')}
+                className="glass-input w-full rounded-xl py-2.5 pl-8 pr-3 text-sm font-semibold text-ink-800 placeholder:text-ink-400 outline-none transition-all"
+              />
+            </div>
+            <div className={`flex flex-col justify-center rounded-xl px-4 py-2 text-sm ${
+              form.farePerSeat !== '' ? 'bg-emerald-50/80 ring-1 ring-emerald-200 text-emerald-700' : 'bg-white/40 ring-1 ring-ink-200 text-ink-400'
+            }`}>
+              <div className="text-[10px] font-bold uppercase tracking-wider">Est. earnings</div>
+              <div className="text-lg font-extrabold">
+                {form.farePerSeat !== '' ? `₹${(+form.farePerSeat * +form.totalSeats).toFixed(0)}` : '—'}
+              </div>
+              <div className="text-[10px]">{form.totalSeats} seat{+form.totalSeats !== 1 ? 's' : ''} × ₹{form.farePerSeat || '0'}</div>
+            </div>
+          </div>
+          <p className="text-[11px] text-ink-400">
+            Leave blank to use the admin-set rate per km. Set ₹0 to offer a free ride.
+          </p>
         </div>
 
         {/* Actions */}

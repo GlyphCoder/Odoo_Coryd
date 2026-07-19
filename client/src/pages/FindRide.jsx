@@ -307,18 +307,18 @@ export default function FindRide() {
 
       {/* RIDING — already booked as passenger */}
       {rideStatus === 'RIDING' && activeTrip && (
-        <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3.5 text-sm text-amber-800 dark:border-amber-600/40 dark:bg-amber-900/20 dark:text-amber-300">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+        <div className="flex items-start gap-3 rounded-xl border border-amber-400 bg-amber-500 px-4 py-3.5 text-sm text-white shadow-lg">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-white" />
           <div className="flex-1 min-w-0">
-            <p className="font-semibold">Status: RIDING — you are booked on an active ride</p>
-            <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-400 truncate">
+            <p className="font-bold">Status: RIDING — you are booked on an active ride</p>
+            <p className="mt-0.5 text-xs text-amber-100 truncate">
               {activeTrip.pickup_address} → {activeTrip.destination_address}
             </p>
-            <p className="mt-1 text-xs">Cancel your booking to search for a different ride.</p>
+            <p className="mt-1 text-xs text-amber-100">Cancel your booking to search for a different ride.</p>
           </div>
           <div className="flex gap-2 shrink-0">
             <Link to={`/app/trips/${activeTrip.trip_id}`}>
-              <Button variant="outline" size="sm">View trip</Button>
+              <Button variant="outline" size="sm" className="border-white/50 text-white hover:bg-white/20">View trip</Button>
             </Link>
             <Button size="sm" variant="danger" onClick={cancelMyBooking} disabled={cancelBusy || activeTrip.status !== 'BOOKED'}>
               {cancelBusy ? 'Cancelling…' : 'Cancel booking'}
@@ -329,17 +329,17 @@ export default function FindRide() {
 
       {/* DRIVING — user has an active ride as driver */}
       {rideStatus === 'DRIVING' && activeRide && (
-        <div className="flex items-start gap-3 rounded-xl border border-blue-300 bg-blue-50 px-4 py-3.5 text-sm text-blue-800 dark:border-blue-600/40 dark:bg-blue-900/20 dark:text-blue-300">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-blue-400" />
+        <div className="flex items-start gap-3 rounded-xl border border-blue-500 bg-blue-600 px-4 py-3.5 text-sm text-white shadow-lg">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-white" />
           <div className="flex-1 min-w-0">
-            <p className="font-semibold">Status: DRIVING — you have an active ride published</p>
-            <p className="mt-0.5 text-xs text-blue-600 dark:text-blue-400 truncate">
+            <p className="font-bold">Status: DRIVING — you have an active ride published</p>
+            <p className="mt-0.5 text-xs text-blue-100 truncate">
               {activeRide.pickup_address} → {activeRide.destination_address}
             </p>
-            <p className="mt-1 text-xs">Cancel your ride before booking a seat on another.</p>
+            <p className="mt-1 text-xs text-blue-100">Cancel your ride before booking a seat on another.</p>
           </div>
           <Link to="/app/trips?role=driver" className="shrink-0">
-            <Button variant="outline" size="sm">View my ride</Button>
+            <Button variant="outline" size="sm" className="border-white/50 text-white hover:bg-white/20">View my ride</Button>
           </Link>
         </div>
       )}
@@ -396,8 +396,8 @@ export default function FindRide() {
         </div>
 
         {/* Node system info banner */}
-        <div className="flex items-start gap-2 rounded-lg bg-orange-50 border border-orange-200 px-3 py-2.5 text-sm text-orange-700">
-          <Navigation className="mt-0.5 h-4 w-4 shrink-0 text-orange-500" />
+        <div className="flex items-start gap-2 rounded-lg border border-brand/40 bg-brand/15 px-3 py-2.5 text-sm text-brand-dark">
+          <Navigation className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
           <span>
             <strong>Smart pickup:</strong> Rides are matched to shared stops within 5 km of your location along the driver's route.
           </span>

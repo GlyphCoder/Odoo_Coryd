@@ -105,24 +105,33 @@ router.patch('/employees/:id/status', asyncHandler(async (req, res) => {
   res.json({ employee: row });
 }));
 
-/** GET /api/admin/vehicles — all org vehicles (for verification). */
+/** GET /api/admin/vehicles — all org vehicles with document URLs (for verification). */
 router.get('/vehicles', asyncHandler(async (req, res) => {
   const rows = (await query(
-    `SELECT v.*, u.full_name AS owner_name
+    `SELECT v.*,
+            u.full_name AS owner_name, u.email AS owner_email
      FROM vehicles v
-     JOIN employees e ON e.employee_id=v.employee_id AND e.organization_id=v.organization_id
-     JOIN users u ON u.user_id=e.user_id
-     WHERE v.organization_id=$1 ORDER BY v.created_at DESC`,
-    [req.auth.orgId])).rows;
+     JOIN employees e ON e.employee_id = v.employee_id AND e.organization_id = v.organization_id
+     JOIN users u ON u.user_id = e.user_id
+     WHERE v.organization_id = $1 ORDER BY v.created_at DESC`,
+    [req.auth.orgId]
+  )).rows;
   res.json({ vehicles: rows });
 }));
 
-/** PATCH /api/admin/vehicles/:id/verify — { isVerified } */
+/** PATCH /api/admin/vehicles/:id/verify — { isVerified, note? } */
 router.patch('/vehicles/:id/verify', asyncHandler(async (req, res) => {
   const isVerified = !!req.body?.isVerified;
+  const note       = req.body?.note || null;
   const row = (await query(
-    `UPDATE vehicles SET is_verified=$3, updated_at=now() WHERE vehicle_id=$1 AND organization_id=$2 RETURNING vehicle_id, is_verified`,
-    [req.params.id, req.auth.orgId, isVerified])).rows[0];
+    `UPDATE vehicles
+     SET is_verified       = $3,
+         verification_note = $4,
+         updated_at        = now()
+     WHERE vehicle_id = $1 AND organization_id = $2
+     RETURNING vehicle_id, is_verified, verification_note`,
+    [req.params.id, req.auth.orgId, isVerified, note]
+  )).rows[0];
   if (!row) throw notFound('Vehicle not found');
   res.json({ vehicle: row });
 }));
@@ -134,6 +143,28 @@ router.get('/settings', asyncHandler(async (req, res) => {
     row = (await query('INSERT INTO organization_settings (organization_id) VALUES ($1) RETURNING *', [req.auth.orgId])).rows[0];
   }
   res.json({ settings: row });
+}));
+
+/** GET /api/admin/trips — all org trips. */
+router.get('/trips', asyncHandler(async (req, res) => {
+  const rows = (await query(
+    `SELECT r.ride_id AS trip_id,
+            r.pickup_address,
+            r.destination_address,
+            r.status,
+            r.created_at,
+            r.departure_datetime AS trip_date,
+            to_char(r.departure_datetime, 'HH24:MI') AS trip_time,
+            (r.total_seats - r.available_seats) AS passenger_count,
+            u.full_name AS driver_name
+     FROM rides r
+     JOIN employees e ON e.employee_id = r.driver_employee_id
+     JOIN users u ON u.user_id = e.user_id
+     WHERE r.organization_id = $1
+     ORDER BY r.created_at DESC`,
+    [req.auth.orgId]
+  )).rows;
+  res.json({ trips: rows });
 }));
 
 /** PATCH /api/admin/settings */

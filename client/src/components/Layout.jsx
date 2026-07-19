@@ -4,6 +4,7 @@ import {
   Menu, Bell, LayoutGrid, Search, Plus, Map,
   Car, Wallet, Clock, Bookmark, ShieldCheck,
   X, LogOut, ChevronLeft, ChevronRight, CheckCheck,
+  Users, MapPin, Settings as SettingsIcon,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext.jsx';
 import Brand, { Logo } from './Brand.jsx';
@@ -21,7 +22,11 @@ const employeeNav = [
 ];
 
 const adminNav = [
-  { to: '/app/admin', label: 'Admin Dashboard', Icon: ShieldCheck, end: true },
+  { to: '/app/admin/overview',  label: 'Overview',    Icon: LayoutGrid, end: true },
+  { to: '/app/admin/employees', label: 'Employees',   Icon: Users },
+  { to: '/app/admin/vehicles',  label: 'Vehicles',    Icon: Car },
+  { to: '/app/admin/trips',     label: 'Trips',       Icon: MapPin },
+  { to: '/app/admin/settings',  label: 'Settings',    Icon: SettingsIcon },
 ];
 
 /* ── User avatar (initials) ─────────────── */

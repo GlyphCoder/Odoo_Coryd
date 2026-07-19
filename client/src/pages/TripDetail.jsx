@@ -5,8 +5,8 @@ import api, { apiError } from '../api.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { getSocket } from '../socket.js';
 import MapView from '../components/MapView.jsx';
-import RazorpayButton from '../components/RazorpayButton.jsx';
 import RazorpayQR from '../components/RazorpayQR.jsx';
+import { useRazorpay } from '../components/RazorpayButton.jsx';
 import AudioCallOverlay from '../components/AudioCallOverlay.jsx';
 import { useWebRTC } from '../hooks/useWebRTC.js';
 import { Button, Card, Badge, Spinner, Alert, money } from '../components/ui.jsx';
@@ -394,42 +394,46 @@ export default function TripDetail() {
                     <span className="text-xl font-extrabold text-brand-dark">{money(payment.amount)}</span>
                   </div>
 
-                  {/* ── Primary: Razorpay checkout + QR ── */}
-                  <div className="mb-3 flex flex-wrap gap-2">
-                    <RazorpayButton
+                  {/* ── Payment methods ── */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {/* CASH */}
+                    <button
+                      onClick={() => pay('CASH')}
+                      disabled={busy}
+                      className="flex flex-col items-center gap-1.5 rounded-xl border border-white/60 bg-white/50 px-3 py-3.5 text-sm font-bold text-ink-700 shadow-sm transition hover:bg-white/80 hover:shadow active:scale-95 disabled:opacity-40"
+                    >
+                      <Banknote className="h-5 w-5 text-emerald-500" />
+                      Cash
+                    </button>
+
+                    {/* UPI → triggers Razorpay */}
+                    <UpiRazorpayTile
                       tripId={trip.trip_id}
                       amount={payment.amount}
                       disabled={busy}
-                      onSuccess={(p) => { setPayment(p); }}
+                      onSuccess={(p) => setPayment(p)}
                       onError={(msg) => setError(msg)}
                     />
+
+                    {/* WALLET */}
                     <button
-                      onClick={() => setShowQR(true)}
+                      onClick={() => pay('WALLET')}
                       disabled={busy}
-                      className="flex items-center gap-2 rounded-xl border border-brand/30 bg-brand/10 px-4 py-2.5 text-sm font-bold text-brand-dark backdrop-blur-sm transition hover:bg-brand/20 active:scale-95 disabled:opacity-50"
+                      className="flex flex-col items-center gap-1.5 rounded-xl border border-white/60 bg-white/50 px-3 py-3.5 text-sm font-bold text-ink-700 shadow-sm transition hover:bg-white/80 hover:shadow active:scale-95 disabled:opacity-40"
                     >
-                      <QrCode className="h-4 w-4" /> Show QR Code
+                      <WalletMinimal className="h-5 w-5 text-brand" />
+                      Wallet
                     </button>
                   </div>
 
-                  {/* ── Divider ── */}
-                  <div className="relative my-4">
-                    <div className="absolute inset-0 flex items-center">
-                      <div className="w-full border-t border-white/70" />
-                    </div>
-                    <div className="relative flex justify-center text-xs font-semibold text-ink-400">
-                      <span className="rounded-full bg-white/70 px-3 py-0.5 backdrop-blur-sm">or pay manually</span>
-                    </div>
-                  </div>
-
-                  {/* ── Fallback: manual methods ── */}
-                  <div className="flex flex-wrap gap-2">
-                    {['CASH', 'UPI', 'WALLET'].map((m) => (
-                      <Button key={m} variant="outline" onClick={() => pay(m)} disabled={busy}>
-                        {m === 'CASH' ? <Banknote className="h-4 w-4" /> : m === 'UPI' ? <Smartphone className="h-4 w-4" /> : <WalletMinimal className="h-4 w-4" />}{' '}{m}
-                      </Button>
-                    ))}
-                  </div>
+                  {/* QR fallback */}
+                  <button
+                    onClick={() => setShowQR(true)}
+                    disabled={busy}
+                    className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-brand/30 bg-brand/10 py-2 text-xs font-semibold text-brand-dark transition hover:bg-brand/20 active:scale-95 disabled:opacity-50"
+                  >
+                    <QrCode className="h-4 w-4" /> Pay via UPI QR Code
+                  </button>
                 </>
               )}
             </Card>
@@ -564,5 +568,26 @@ function Info({ label, value }) {
       <div className="text-[10px] font-bold uppercase tracking-wider text-ink-400">{label}</div>
       <div className="mt-0.5 truncate font-semibold text-ink-700" title={value}>{value}</div>
     </div>
+  );
+}
+
+/** UPI tile that opens the Razorpay popup when clicked */
+function UpiRazorpayTile({ tripId, amount, disabled, onSuccess, onError }) {
+  const { open, loading, ready } = useRazorpay({ tripId, onSuccess, onError });
+  return (
+    <button
+      onClick={open}
+      disabled={disabled || loading || !ready}
+      className="flex flex-col items-center gap-1.5 rounded-xl border border-brand/30 bg-brand/10 px-3 py-3.5 text-sm font-bold text-brand-dark shadow-sm transition hover:bg-brand/20 hover:shadow active:scale-95 disabled:opacity-40"
+    >
+      {loading ? (
+        <svg className="h-5 w-5 animate-spin text-brand" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+        </svg>
+      ) : (
+        <Smartphone className="h-5 w-5 text-brand" />
+      )}
+      {loading ? 'Processing…' : 'UPI'}
+    </button>
   );
 }
